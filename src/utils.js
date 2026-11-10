@@ -24,6 +24,7 @@ const PREFIX_COMMANDS = [
   ["تايم", "timeout"],
   ["تحذير", "warn"],
   ["تكت", "ticket"],
+  ["قيفوايات", "giveawaylist"],
   ["قيفواي", "giveaway"],
   ["قول", "say"],
   ["dm", "dm"],
