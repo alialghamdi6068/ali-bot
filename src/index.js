@@ -402,7 +402,7 @@ async function execute(context, name, data = {}) {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       const rows = statements.getGuildActiveGiveaways.all(guild.id);
       const description = rows.length
-        ? rows.map(item => `**#${item.id}** — ${item.prize} • ${item.winners_count} winner(s) • Ends <t:${Math.floor(item.ends_at / 1000)}:R> • <#${item.channel_id}>`).join("\\n")
+        ? rows.map(item => `**#${item.id}** — ${item.prize} • ${item.winners_count} winner(s) • Ends <t:${Math.floor(item.ends_at / 1000)}:R> • <#${item.channel_id}>`).join("\n")
         : "There are no active giveaways.";
       await reply(context, { embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle("Active Giveaways").setDescription(description.slice(0, 4000))] });
       break;
@@ -460,7 +460,7 @@ async function execute(context, name, data = {}) {
         "**Tickets**",
         "`/ticket` • `/close` • `/reopen` • `/delete` • `/add` • `/remove` • `/claim`",
         "**Giveaways**",
-        "`/giveaway` • `/endgiveaway` • `/reroll`",
+        "`/giveaway` • `/giveawaylist` • `/endgiveaway` • `/reroll`",
         "**Other**",
         "`/say` • `/dm` • `/role` • `/removerole` • `/userinfo` • `/serverinfo` • `/ping` • `/logs`",
         "**Arabic prefix**",
