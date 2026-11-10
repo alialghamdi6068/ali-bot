@@ -7,6 +7,7 @@ test("resolves multi-word Arabic prefix commands before shorter commands", () =>
   assert.deepEqual(resolvePrefixCommand("فك حظر 12345678901234567"), { command: "unban", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("معلومات السيرفر"), { command: "serverinfo", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("تحذيرات @user"), { command: "warnings", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("قيفوايات"), { command: "giveawaylist", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("الغاء تايم @user"), { command: "untimeout", consumed: 2 });
 });
 
