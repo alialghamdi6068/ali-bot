@@ -15,10 +15,12 @@ const {
   MessageFlags
 } = require("discord.js");
 
-const { statements, db } = require("./database");
+const { statements } = require("./database");
+const slashCommands = require("./commands");
+const { randomInt } = require("node:crypto");
 const { resolvePrefixCommand, parseDuration, formatDate } = require("./utils");
 
-const requiredEnv = ["DISCORD_TOKEN", "CLIENT_ID", "GUILD_ID"];
+const requiredEnv = ["DISCORD_TOKEN", "GUILD_ID"];
 for (const key of requiredEnv) {
   if (!process.env[key]?.trim()) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -34,8 +36,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.MessageContent
   ],
   partials: [Partials.Channel]
 });
@@ -81,12 +82,16 @@ async function createTicket(context) {
   if (existing) throw new Error(`You already have an open ticket: <#${existing.channel_id}>.`);
 
   const number = statements.nextTicket.get().value;
+  const staffOverwrites = guild.roles.cache
+    .filter(role => role.id !== guild.roles.everyone.id && role.permissions.has(PermissionFlagsBits.ManageChannels))
+    .map(role => ({ id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }));
   const ticketChannel = await guild.channels.create({
     name: String(number),
     type: ChannelType.GuildText,
     topic: `Ticket #${number} | Owner: ${user.id}`,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+      ...staffOverwrites,
       {
         id: user.id,
         allow: [
@@ -164,6 +169,7 @@ async function deleteTicket(context) {
   if (!ticket) throw new Error("This channel is not a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
   logAction(context.guild.id, context.user.id, "ticket_delete", ticket.user_id, `Ticket #${ticket.number}`);
+  statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
   await reply(context, `Deleting ticket #${ticket.number}.`, false);
   await context.channel.delete(`Ticket #${ticket.number} deleted by ${context.user.tag}`);
 }
@@ -226,8 +232,11 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
 }
 
 async function finishGiveaway(giveaway, reroll = false) {
-  const entries = statements.getGiveawayEntries.all(giveaway.id).map(row => row.user_id);
-  const shuffled = [...entries].sort(() => Math.random() - 0.5);
+  const shuffled = statements.getGiveawayEntries.all(giveaway.id).map(row => row.user_id);
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
   const winners = shuffled.slice(0, Math.min(giveaway.winners_count, shuffled.length));
   if (!reroll) statements.endGiveaway.run(giveaway.id);
 
@@ -256,10 +265,21 @@ function scheduleGiveawayEnd(id, endsAt) {
   const delay = Math.max(0, endsAt - Date.now());
   const timer = setTimeout(async () => {
     const giveaway = statements.getGiveaway.get(id, GUILD_ID);
-    if (!giveaway || giveaway.status !== "active") return;
-    try { await finishGiveaway(giveaway); }
-    catch (error) { console.error(`Failed to finish giveaway #${id}:`, error); }
-    giveawayTimers.delete(id);
+    if (!giveaway || giveaway.status !== "active") {
+      giveawayTimers.delete(id);
+      return;
+    }
+    if (giveaway.ends_at > Date.now()) {
+      scheduleGiveawayEnd(id, giveaway.ends_at);
+      return;
+    }
+    try {
+      await finishGiveaway(giveaway);
+      giveawayTimers.delete(id);
+    } catch (error) {
+      console.error(`Failed to finish giveaway #${id}:`, error);
+      scheduleGiveawayEnd(id, Date.now() + 60_000);
+    }
   }, Math.min(delay, 2_147_000_000));
   timer.unref?.();
   giveawayTimers.set(id, timer);
@@ -377,6 +397,7 @@ async function execute(context, name, data = {}) {
       const giveaway = statements.getGiveaway.get(data.giveawayId, guild.id);
       if (!giveaway) throw new Error("Giveaway not found.");
       if (name === "endgiveaway" && giveaway.status !== "active") throw new Error("This giveaway has already ended.");
+      if (name === "reroll" && giveaway.status !== "ended") throw new Error("You can only reroll a giveaway that has ended.");
       const winners = await finishGiveaway(giveaway, name === "reroll");
       if (name === "endgiveaway") {
         logAction(guild.id, user.id, "giveaway_end", null, `Giveaway #${giveaway.id}`);
@@ -388,6 +409,7 @@ async function execute(context, name, data = {}) {
     }
     case "say": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
+      if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new Error("Message must contain between 1 and 2000 characters.");
       await channel.send({ content: data.message, allowedMentions: { parse: ["everyone", "users", "roles"] } });
       logAction(guild.id, user.id, "say", null, data.message.slice(0, 500));
       if (context.isInteraction) await reply(context, "Message sent.");
@@ -395,6 +417,7 @@ async function execute(context, name, data = {}) {
     }
     case "dm": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
+      if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new Error("Message must contain between 1 and 2000 characters.");
       await data.target.send({ content: data.message, allowedMentions: { parse: ["users", "roles", "everyone"] } });
       logAction(guild.id, user.id, "dm", data.target.id, data.message.slice(0, 500));
       await reply(context, `Direct message sent to <@${data.target.id}>.`);
@@ -585,6 +608,12 @@ async function handlePrefix(message) {
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
+  try {
+    await client.application.commands.set(slashCommands, GUILD_ID);
+    console.log(`Registered ${slashCommands.length} slash commands for guild ${GUILD_ID}.`);
+  } catch (error) {
+    console.error("Failed to register guild slash commands:", error);
+  }
   client.user.setPresence({
     status: PresenceUpdateStatus.DoNotDisturb,
     activities: [{ name: "𝓐𝓵𝓲 𝓐𝓵𝓰𝓱𝓪𝓶𝓭𝓲", type: ActivityType.Watching }]
@@ -596,6 +625,13 @@ client.once("ready", async () => {
 });
 
 client.on("messageCreate", handlePrefix);
+
+client.on("channelDelete", channel => {
+  const ticket = getTicket(channel.id);
+  if (ticket && ticket.status !== "deleted") {
+    statements.updateTicketStatus.run("deleted", Date.now(), channel.id);
+  }
+});
 
 client.on("interactionCreate", async interaction => {
   try {
@@ -623,11 +659,11 @@ client.on("interactionCreate", async interaction => {
     if (["ban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarn", "add", "remove", "dm", "role", "removerole"].includes(name)) {
       data.target = interaction.options.getUser("user");
     }
-    if (name === "unban") data.userId = interaction.options.getString("user_id");
+    if (name === "unban") data.userId = interaction.options.getString("userid");
     if (["ban", "kick", "timeout", "warn", "unban"].includes(name)) data.reason = interaction.options.getString("reason") ?? DEFAULT_REASON;
     if (name === "timeout") data.duration = interaction.options.getString("duration");
     if (name === "warn") data.reason = interaction.options.getString("reason");
-    if (name === "clearwarn") data.warningId = interaction.options.getInteger("warning_id");
+    if (name === "clearwarn") data.warningId = interaction.options.getInteger("warningid");
     if (name === "clear") data.amount = interaction.options.getInteger("amount");
     if (name === "giveaway") {
       data.prize = interaction.options.getString("prize");
@@ -635,7 +671,7 @@ client.on("interactionCreate", async interaction => {
       data.winnersCount = interaction.options.getInteger("winners");
       data.targetChannel = interaction.options.getChannel("channel");
     }
-    if (["endgiveaway", "reroll"].includes(name)) data.giveawayId = interaction.options.getInteger("giveaway_id");
+    if (["endgiveaway", "reroll"].includes(name)) data.giveawayId = interaction.options.getInteger("giveawayid");
     if (name === "say") data.message = interaction.options.getString("message");
     if (name === "dm") data.message = interaction.options.getString("message");
     if (["role", "removerole"].includes(name)) data.role = interaction.options.getRole("role");
@@ -643,7 +679,7 @@ client.on("interactionCreate", async interaction => {
 
     const context = {
       guild: interaction.guild,
-      member: interaction.member,
+      member: await interaction.guild.members.fetch(interaction.user.id),
       user: interaction.user,
       channel: interaction.channel,
       isInteraction: true,
