@@ -19,6 +19,7 @@ const { statements } = require("./database");
 const slashCommands = require("./commands");
 const { randomInt } = require("node:crypto");
 const { resolvePrefixCommand, parseDuration, formatDate } = require("./utils");
+const { assertCanModerateMember, assertCanManageRole } = require("./permissions");
 
 const requiredEnv = ["DISCORD_TOKEN", "GUILD_ID"];
 for (const key of requiredEnv) {
@@ -124,11 +125,17 @@ async function createTicket(context) {
     createdAt: Date.now()
   });
   logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${number}`);
-  await ticketChannel.send({
-    content: `<@!${user.id}>`,
-    embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`Ticket #${number}`).setDescription("Describe your issue here. A staff member will assist you.")],
-    allowedMentions: { users: [user.id] }
-  });
+  try {
+    await ticketChannel.send({
+      content: `<@!${user.id}>`,
+      embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`Ticket #${number}`).setDescription("Describe your issue here. A staff member will assist you.")],
+      allowedMentions: { users: [user.id] }
+    });
+  } catch (error) {
+    statements.updateTicketStatus.run("deleted", Date.now(), ticketChannel.id);
+    await ticketChannel.delete("Ticket setup failed; cleaning up").catch(() => {});
+    throw new Error(`Ticket was created but its welcome message failed. The channel was cleaned up where possible: ${error.message}`);
+  }
   await reply(context, `Your ticket has been created: <#${ticketChannel.id}>.`);
 }
 
@@ -168,10 +175,10 @@ async function deleteTicket(context) {
   const ticket = getTicket(context.channel.id);
   if (!ticket) throw new Error("This channel is not a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
-  logAction(context.guild.id, context.user.id, "ticket_delete", ticket.user_id, `Ticket #${ticket.number}`);
-  statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
   await reply(context, `Deleting ticket #${ticket.number}.`, false);
   await context.channel.delete(`Ticket #${ticket.number} deleted by ${context.user.tag}`);
+  statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
+  logAction(context.guild.id, context.user.id, "ticket_delete", ticket.user_id, `Ticket #${ticket.number}`);
 }
 
 async function addTicketMember(context, target, remove = false) {
@@ -227,36 +234,55 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`giveaway:enter:${id}`).setLabel("Enter Giveaway").setStyle(ButtonStyle.Primary)
   );
-  const giveawayMessage = await destination.send({ embeds: [embed], components: [row] });
-  statements.setGiveawayMessage.run(giveawayMessage.id, id);
+  let giveawayMessage;
+  try {
+    giveawayMessage = await destination.send({ embeds: [embed], components: [row] });
+    const linked = statements.setGiveawayMessage.run(giveawayMessage.id, id);
+    if (!linked.changes) throw new Error("Could not link the giveaway message to its database record.");
+  } catch (error) {
+    if (giveawayMessage) await giveawayMessage.delete("Giveaway setup failed").catch(() => {});
+    statements.deleteGiveaway.run(id);
+    throw new Error(`Giveaway creation failed and its database record was rolled back: ${error.message}`);
+  }
   logAction(context.guild.id, context.user.id, "giveaway_create", null, `Giveaway #${id}: ${prize}`);
   scheduleGiveawayEnd(id, endsAt);
   await reply(context, `Giveaway #${id} created in <#${destination.id}>.`);
 }
 
 async function finishGiveaway(giveaway, reroll = false) {
+  const channel = await client.channels.fetch(giveaway.channel_id);
+  if (!channel?.isTextBased()) throw new Error(`Giveaway #${giveaway.id} channel is unavailable; it will be retried.`);
+  if (!giveaway.message_id) throw new Error(`Giveaway #${giveaway.id} has no linked message; refusing to mark it ended.`);
+  const message = await channel.messages.fetch(giveaway.message_id);
+
   const shuffled = statements.getGiveawayEntries.all(giveaway.id).map(row => row.user_id);
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
     const swapIndex = randomInt(index + 1);
     [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
   }
   const winners = shuffled.slice(0, Math.min(giveaway.winners_count, shuffled.length));
-  if (!reroll) statements.endGiveaway.run(giveaway.id);
+  const embed = new EmbedBuilder()
+    .setColor(0x95a5a6)
+    .setTitle("Giveaway Ended")
+    .setDescription(`**Prize:** ${giveaway.prize}\\n**Winners:** ${winners.length ? winners.map(id => `<@${id}>`).join(", ") : "No valid entries."}`)
+    .setFooter({ text: `Giveaway #${giveaway.id}` });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`giveaway:ended:${giveaway.id}`).setLabel("Giveaway Ended").setStyle(ButtonStyle.Secondary).setDisabled(true)
+  );
 
-  const channel = await client.channels.fetch(giveaway.channel_id).catch(() => null);
-  if (channel?.isTextBased() && giveaway.message_id) {
-    const message = await channel.messages.fetch(giveaway.message_id).catch(() => null);
-    if (message) {
-      const embed = new EmbedBuilder()
-        .setColor(0x95a5a6)
-        .setTitle("Giveaway Ended")
-        .setDescription(`**Prize:** ${giveaway.prize}\n**Winners:** ${winners.length ? winners.map(id => `<@${id}>`).join(", ") : "No valid entries."}`)
-        .setFooter({ text: `Giveaway #${giveaway.id}` });
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`giveaway:ended:${giveaway.id}`).setLabel("Giveaway Ended").setStyle(ButtonStyle.Secondary).setDisabled(true)
-      );
-      await message.edit({ embeds: [embed], components: [row] }).catch(() => {});
-      if (winners.length) await channel.send(`Congratulations ${winners.map(id => `<@${id}>`).join(", ")}! You won **${giveaway.prize}**.`);
+  // Only persist the ended state after Discord confirms the public giveaway message was updated.
+  await message.edit({ embeds: [embed], components: [row] });
+  if (!reroll) {
+    const ended = statements.endGiveaway.run(giveaway.id);
+    if (!ended.changes) {
+      const current = statements.getGiveaway.get(giveaway.id, giveaway.guild_id);
+      if (current?.status !== "ended") throw new Error(`Could not persist ended state for giveaway #${giveaway.id}.`);
+    }
+    if (winners.length) {
+      await channel.send({
+        content: `Congratulations ${winners.map(id => `<@${id}>`).join(", ")}! You won **${giveaway.prize}**.`,
+        allowedMentions: { users: winners }
+      }).catch(error => console.error(`Giveaway #${giveaway.id} ended, but winner announcement failed:`, error));
     }
   }
   return winners;
@@ -296,6 +322,7 @@ async function moderation(context, name, data) {
   if (name === "ban") {
     requirePermission(member, PermissionFlagsBits.BanMembers, "Ban Members");
     const targetMember = await getMember(guild, data.target);
+    assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     await targetMember.ban({ reason });
     logAction(guild.id, user.id, "ban", data.target.id, reason);
     await reply(context, `Banned <@${data.target.id}>. Reason: ${reason}`);
@@ -311,6 +338,7 @@ async function moderation(context, name, data) {
   if (name === "kick") {
     requirePermission(member, PermissionFlagsBits.KickMembers, "Kick Members");
     const targetMember = await getMember(guild, data.target);
+    assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     await targetMember.kick(reason);
     logAction(guild.id, user.id, "kick", data.target.id, reason);
     await reply(context, `Kicked <@${data.target.id}>. Reason: ${reason}`);
@@ -323,6 +351,7 @@ async function moderation(context, name, data) {
       throw new Error("Timeout duration must be between 1 second and 28 days (examples: 10m, 2h, 1d).");
     }
     const targetMember = await getMember(guild, data.target);
+    assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     await targetMember.timeout(duration, reason);
     logAction(guild.id, user.id, "timeout", data.target.id, `${data.duration}: ${reason}`);
     await reply(context, `Timed out <@${data.target.id}> for ${data.duration}. Reason: ${reason}`);
@@ -331,6 +360,7 @@ async function moderation(context, name, data) {
   if (name === "untimeout") {
     requirePermission(member, PermissionFlagsBits.ModerateMembers, "Moderate Members");
     const targetMember = await getMember(guild, data.target);
+    assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     await targetMember.timeout(null, "Timeout removed by moderator");
     logAction(guild.id, user.id, "untimeout", data.target.id, "Timeout removed");
     await reply(context, `Removed timeout from <@${data.target.id}>.`);
@@ -341,6 +371,8 @@ async function moderation(context, name, data) {
     if (typeof data.reason !== "string" || !data.reason.trim() || data.reason.length > 1000) {
       throw new Error("Warning reason must contain between 1 and 1000 characters.");
     }
+    const targetMember = await getMember(guild, data.target);
+    assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     const warning = statements.addWarning.run(guild.id, data.target.id, user.id, data.reason.trim(), Date.now());
     const warningId = Number(warning.lastInsertRowid);
     let dmSent = true;
@@ -443,10 +475,7 @@ async function execute(context, name, data = {}) {
     case "removerole": {
       requirePermission(member, PermissionFlagsBits.ManageRoles, "Manage Roles");
       const targetMember = await getMember(guild, data.target);
-      const botMember = guild.members.me;
-      if (data.role.id === guild.id) throw new Error("The @everyone role cannot be managed with this command.");
-      if (data.role.position >= botMember.roles.highest.position) throw new Error("I cannot manage a role equal to or higher than my highest role.");
-      if (data.role.managed) throw new Error("Managed integration roles cannot be assigned manually.");
+      assertCanManageRole({ actor: member, target: targetMember, bot: guild.members.me, role: data.role, everyoneRoleId: guild.id });
       if (name === "role") await targetMember.roles.add(data.role);
       else await targetMember.roles.remove(data.role);
       logAction(guild.id, user.id, name, data.target.id, data.role.name);
