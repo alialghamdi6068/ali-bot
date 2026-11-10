@@ -18,6 +18,7 @@ test("resolves single-word prefix commands", () => {
   assert.deepEqual(resolvePrefixCommand("صيانة تشغيل"), { command: "maintenance", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("قفل الروم"), { command: "lock", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("فتح الروم"), { command: "unlock", consumed: 2 });
+  assert.deepEqual(resolvePrefixCommand("فتح"), { command: "unlock", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("بطء 10"), { command: "slowmode", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("اعلان نص"), { command: "announce", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("تنبيه @role نص"), { command: "notify", consumed: 1 });
