@@ -11,17 +11,20 @@ function assertCanModerateMember({ actor, target, bot, guild }) {
   }
 }
 
-function assertCanManageRole({ actor, target, bot, role, everyoneRoleId }) {
+function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }) {
   if (!actor || !target || !bot || !role) throw new Error("Could not verify role hierarchy.");
   if (role.id === everyoneRoleId) throw new Error("The @everyone role cannot be managed with this command.");
   if (role.managed) throw new Error("Managed integration roles cannot be assigned manually.");
   if (role.position >= bot.roles.highest.position) {
     throw new Error("I cannot manage a role equal to or higher than my highest role.");
   }
-  if (role.position >= actor.roles.highest.position) {
+  if (guild?.ownerId !== actor.id && role.position >= actor.roles.highest.position) {
     throw new Error("You cannot manage a role equal to or higher than your highest role.");
   }
-  if (target.id !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
+  if (guild?.ownerId === target.id && guild?.ownerId !== actor.id) {
+    throw new Error("You cannot change roles for the server owner.");
+  }
+  if (guild?.ownerId !== actor.id && target.id !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
     throw new Error("You cannot change roles for a target member with a role equal to or higher than your highest role.");
   }
   if (target.roles.highest.position >= bot.roles.highest.position) {
