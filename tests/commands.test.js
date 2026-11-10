@@ -14,7 +14,7 @@ test("all slash command and option names are lowercase English without underscor
 
 test("the required core slash commands are registered", () => {
   const names = new Set(commands.map(command => command.name));
-  for (const name of ["ban", "unban", "timeout", "warn", "warnings", "ticket", "giveaway", "giveawaylist", "say", "dm", "role", "help"]) {
+  for (const name of ["ban", "unban", "timeout", "warn", "warnings", "ticket", "giveaway", "giveawaylist", "say", "dm", "role", "help", "maintenance", "lock", "unlock", "slowmode", "announce", "notify", "reminder"]) {
     assert.ok(names.has(name), `Missing slash command: ${name}`);
   }
 });
