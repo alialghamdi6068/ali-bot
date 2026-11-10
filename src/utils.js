@@ -38,6 +38,7 @@ const PREFIX_COMMANDS = [
   ["قفل الروم", "lock"],
   ["فتح", "unlock"],
   ["فتح الروم", "unlock"],
+  ["فتح", "unlock"],
   ["بطء", "slowmode"],
   ["اعلان", "announce"],
   ["إعلان", "announce"],
