@@ -1,11 +1,11 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require("discord.js");
+const { SlashCommandBuilder, ChannelType } = require("discord.js");
 
 const commands = [
   new SlashCommandBuilder().setName("ban").setDescription("Ban a member")
     .addUserOption(o => o.setName("user").setDescription("Member to ban").setRequired(true))
     .addStringOption(o => o.setName("reason").setDescription("Reason")),
   new SlashCommandBuilder().setName("unban").setDescription("Unban a user")
-    .addStringOption(o => o.setName("user_id").setDescription("Discord user ID").setRequired(true))
+    .addStringOption(o => o.setName("userid").setDescription("Discord user ID").setRequired(true))
     .addStringOption(o => o.setName("reason").setDescription("Reason")),
   new SlashCommandBuilder().setName("kick").setDescription("Kick a member")
     .addUserOption(o => o.setName("user").setDescription("Member to kick").setRequired(true))
@@ -23,7 +23,7 @@ const commands = [
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true)),
   new SlashCommandBuilder().setName("clearwarn").setDescription("Delete one warning")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
-    .addIntegerOption(o => o.setName("warning_id").setDescription("Warning number").setRequired(true)),
+    .addIntegerOption(o => o.setName("warningid").setDescription("Warning number").setRequired(true)),
   new SlashCommandBuilder().setName("clear").setDescription("Delete recent messages")
     .addIntegerOption(o => o.setName("amount").setDescription("1 to 100").setMinValue(1).setMaxValue(100).setRequired(true)),
   new SlashCommandBuilder().setName("ticket").setDescription("Create your support ticket"),
@@ -41,9 +41,9 @@ const commands = [
     .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20).setRequired(true))
     .addChannelOption(o => o.setName("channel").setDescription("Where to post").addChannelTypes(ChannelType.GuildText)),
   new SlashCommandBuilder().setName("endgiveaway").setDescription("End a giveaway")
-    .addIntegerOption(o => o.setName("giveaway_id").setDescription("Giveaway number").setRequired(true)),
+    .addIntegerOption(o => o.setName("giveawayid").setDescription("Giveaway number").setRequired(true)),
   new SlashCommandBuilder().setName("reroll").setDescription("Reroll giveaway winners")
-    .addIntegerOption(o => o.setName("giveaway_id").setDescription("Giveaway number").setRequired(true)),
+    .addIntegerOption(o => o.setName("giveawayid").setDescription("Giveaway number").setRequired(true)),
   new SlashCommandBuilder().setName("say").setDescription("Make the bot send a message")
     .addStringOption(o => o.setName("message").setDescription("Message to send").setRequired(true)),
   new SlashCommandBuilder().setName("dm").setDescription("Send a direct message")
