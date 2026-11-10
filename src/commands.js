@@ -3,22 +3,22 @@ const { SlashCommandBuilder, ChannelType } = require("discord.js");
 const commands = [
   new SlashCommandBuilder().setName("ban").setDescription("Ban a member")
     .addUserOption(o => o.setName("user").setDescription("Member to ban").setRequired(true))
-    .addStringOption(o => o.setName("reason").setDescription("Reason")),
+    .addStringOption(o => o.setName("reason").setDescription("Reason").setMaxLength(500)),
   new SlashCommandBuilder().setName("unban").setDescription("Unban a user")
     .addStringOption(o => o.setName("userid").setDescription("Discord user ID").setRequired(true))
-    .addStringOption(o => o.setName("reason").setDescription("Reason")),
+    .addStringOption(o => o.setName("reason").setDescription("Reason").setMaxLength(500)),
   new SlashCommandBuilder().setName("kick").setDescription("Kick a member")
     .addUserOption(o => o.setName("user").setDescription("Member to kick").setRequired(true))
-    .addStringOption(o => o.setName("reason").setDescription("Reason")),
+    .addStringOption(o => o.setName("reason").setDescription("Reason").setMaxLength(500)),
   new SlashCommandBuilder().setName("timeout").setDescription("Timeout a member")
     .addUserOption(o => o.setName("user").setDescription("Member to timeout").setRequired(true))
     .addStringOption(o => o.setName("duration").setDescription("Examples: 10m, 2h, 1d").setRequired(true))
-    .addStringOption(o => o.setName("reason").setDescription("Reason")),
+    .addStringOption(o => o.setName("reason").setDescription("Reason").setMaxLength(500)),
   new SlashCommandBuilder().setName("untimeout").setDescription("Remove a member timeout")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true)),
   new SlashCommandBuilder().setName("warn").setDescription("Warn a member")
     .addUserOption(o => o.setName("user").setDescription("Member to warn").setRequired(true))
-    .addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(true)),
+    .addStringOption(o => o.setName("reason").setDescription("Reason").setMaxLength(500).setRequired(true)),
   new SlashCommandBuilder().setName("warnings").setDescription("Show a member's warnings")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true)),
   new SlashCommandBuilder().setName("clearwarn").setDescription("Delete one warning")
@@ -36,7 +36,7 @@ const commands = [
     .addUserOption(o => o.setName("user").setDescription("Member to remove").setRequired(true)),
   new SlashCommandBuilder().setName("claim").setDescription("Claim this ticket"),
   new SlashCommandBuilder().setName("giveaway").setDescription("Start a giveaway")
-    .addStringOption(o => o.setName("prize").setDescription("Giveaway prize").setRequired(true))
+    .addStringOption(o => o.setName("prize").setDescription("Giveaway prize").setMaxLength(200).setRequired(true))
     .addStringOption(o => o.setName("duration").setDescription("Examples: 10m, 2h, 1d").setRequired(true))
     .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20).setRequired(true))
     .addChannelOption(o => o.setName("channel").setDescription("Where to post").addChannelTypes(ChannelType.GuildText)),
@@ -45,10 +45,10 @@ const commands = [
   new SlashCommandBuilder().setName("reroll").setDescription("Reroll giveaway winners")
     .addIntegerOption(o => o.setName("giveawayid").setDescription("Giveaway number").setRequired(true)),
   new SlashCommandBuilder().setName("say").setDescription("Make the bot send a message")
-    .addStringOption(o => o.setName("message").setDescription("Message to send").setRequired(true)),
+    .addStringOption(o => o.setName("message").setDescription("Message to send").setMaxLength(2000).setRequired(true)),
   new SlashCommandBuilder().setName("dm").setDescription("Send a direct message")
     .addUserOption(o => o.setName("user").setDescription("Recipient").setRequired(true))
-    .addStringOption(o => o.setName("message").setDescription("Message text").setRequired(true)),
+    .addStringOption(o => o.setName("message").setDescription("Message text").setMaxLength(2000).setRequired(true)),
   new SlashCommandBuilder().setName("role").setDescription("Give a role to a member")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
     .addRoleOption(o => o.setName("role").setDescription("Role to give").setRequired(true)),
