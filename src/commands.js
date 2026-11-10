@@ -61,7 +61,22 @@ const commands = [
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
   new SlashCommandBuilder().setName("serverinfo").setDescription("Show server information"),
   new SlashCommandBuilder().setName("ping").setDescription("Show bot latency"),
-  new SlashCommandBuilder().setName("logs").setDescription("Show recent moderation and bot logs")
+  new SlashCommandBuilder().setName("maintenance").setDescription("Enable or disable server maintenance")
+    .addBooleanOption(o => o.setName("enabled").setDescription("Enable maintenance mode").setRequired(true))
+    .addStringOption(o => o.setName("reason").setDescription("Maintenance notice").setMaxLength(500)),
+  new SlashCommandBuilder().setName("lock").setDescription("Lock this text channel"),
+  new SlashCommandBuilder().setName("unlock").setDescription("Unlock this text channel"),
+  new SlashCommandBuilder().setName("slowmode").setDescription("Set channel slowmode")
+    .addIntegerOption(o => o.setName("seconds").setDescription("0 to 21600 seconds").setMinValue(0).setMaxValue(21600).setRequired(true)),
+  new SlashCommandBuilder().setName("announce").setDescription("Send an announcement embed")
+    .addStringOption(o => o.setName("message").setDescription("Announcement text").setMaxLength(2000).setRequired(true)),
+  new SlashCommandBuilder().setName("notify").setDescription("Send a notification, optionally pinging a role")
+    .addStringOption(o => o.setName("message").setDescription("Notification text").setMaxLength(2000).setRequired(true))
+    .addRoleOption(o => o.setName("role").setDescription("Role to notify")),
+  new SlashCommandBuilder().setName("reminder").setDescription("Set a personal reminder")
+    .addStringOption(o => o.setName("duration").setDescription("Examples: 10m, 2h, 1d").setRequired(true))
+    .addStringOption(o => o.setName("message").setDescription("What should I remind you about?").setMaxLength(1000).setRequired(true)),
+    new SlashCommandBuilder().setName("logs").setDescription("Show recent moderation and bot logs")
 ];
 
 module.exports = commands;
