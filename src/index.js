@@ -398,6 +398,15 @@ async function execute(context, name, data = {}) {
     case "remove": return addTicketMember(context, data.target, true);
     case "claim": return claimTicket(context);
     case "giveaway": return createGiveaway(context, data.prize, data.duration, data.winnersCount, data.targetChannel);
+    case "giveawaylist": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      const rows = statements.getGuildActiveGiveaways.all(guild.id);
+      const description = rows.length
+        ? rows.map(item => `**#${item.id}** — ${item.prize} • ${item.winners_count} winner(s) • Ends <t:${Math.floor(item.ends_at / 1000)}:R> • <#${item.channel_id}>`).join("\\n")
+        : "There are no active giveaways.";
+      await reply(context, { embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle("Active Giveaways").setDescription(description.slice(0, 4000))] });
+      break;
+    }
     case "endgiveaway":
     case "reroll": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
@@ -457,7 +466,7 @@ async function execute(context, name, data = {}) {
         "**Arabic prefix**",
         "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح`",
         "`!تكت` • `!إغلاق تكت` • `!فتح تكت` • `!حذف تكت` • `!إضافة عضو` • `!إزالة عضو` • `!استلام تكت`",
-        "`!قيفواي` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة`"
+        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة`"
       ].join("\n"));
       await reply(context, { embeds: [embed] });
       break;
