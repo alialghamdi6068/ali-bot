@@ -291,6 +291,7 @@ function scheduleGiveawayEnd(id, endsAt) {
 async function moderation(context, name, data) {
   const { guild, user, member } = context;
   const reason = data.reason?.trim() || DEFAULT_REASON;
+  if (reason.length > 500) throw new Error("Moderation reason cannot exceed 500 characters.");
 
   if (name === "ban") {
     requirePermission(member, PermissionFlagsBits.BanMembers, "Ban Members");
@@ -337,6 +338,9 @@ async function moderation(context, name, data) {
   }
   if (name === "warn") {
     requirePermission(member, PermissionFlagsBits.ModerateMembers, "Moderate Members");
+    if (typeof data.reason !== "string" || !data.reason.trim() || data.reason.length > 1000) {
+      throw new Error("Warning reason must contain between 1 and 1000 characters.");
+    }
     const warning = statements.addWarning.run(guild.id, data.target.id, user.id, data.reason.trim(), Date.now());
     const warningId = Number(warning.lastInsertRowid);
     let dmSent = true;
