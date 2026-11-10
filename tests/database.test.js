@@ -37,3 +37,21 @@ test("warnings, giveaway entries, and logs are stored and queryable", () => {
   assert.equal(statements.getLogs.all(guildId)[0].action, "test");
   statements.endGiveaway.run(giveawayId);
 });
+
+test("failed giveaway setup can be rolled back without leaving entries", () => {
+  const guildId = `rollback-guild-${Date.now()}`;
+  const result = statements.createGiveaway.run({
+    guildId,
+    channelId: "523456789012345678",
+    hostId: "623456789012345678",
+    prize: "Rollback prize",
+    winnersCount: 1,
+    endsAt: Date.now() + 60_000,
+    createdAt: Date.now()
+  });
+  const giveawayId = Number(result.lastInsertRowid);
+  statements.enterGiveaway.run(giveawayId, "723456789012345678", Date.now());
+  assert.equal(statements.deleteGiveaway.run(giveawayId).changes, 1);
+  assert.equal(statements.getGiveaway.get(giveawayId, guildId), undefined);
+  assert.deepEqual(statements.getGiveawayEntries.all(giveawayId), []);
+});
