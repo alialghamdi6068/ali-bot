@@ -15,6 +15,13 @@ test("resolves single-word prefix commands", () => {
   assert.deepEqual(resolvePrefixCommand("حظر @user"), { command: "ban", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("قول hello world"), { command: "say", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("dm @user hello"), { command: "dm", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("صيانة تشغيل"), { command: "maintenance", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("قفل الروم"), { command: "lock", consumed: 2 });
+  assert.deepEqual(resolvePrefixCommand("فتح الروم"), { command: "unlock", consumed: 2 });
+  assert.deepEqual(resolvePrefixCommand("بطء 10"), { command: "slowmode", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("اعلان نص"), { command: "announce", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("تنبيه @role نص"), { command: "notify", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("تذكير 10m نص"), { command: "reminder", consumed: 1 });
 });
 
 test("parses supported duration units and rejects invalid values", () => {
