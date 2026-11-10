@@ -405,6 +405,8 @@ async function moderation(context, name, data) {
   }
   if (name === "clearwarn") {
     requirePermission(member, PermissionFlagsBits.ModerateMembers, "Moderate Members");
+    const targetMember = await getMember(guild, data.target);
+    assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     const result = statements.deleteWarning.run(data.warningId, guild.id, data.target.id);
     if (!result.changes) throw new Error("Warning not found for this member.");
     logAction(guild.id, user.id, "clear_warning", data.target.id, `Warning #${data.warningId}`);
@@ -483,7 +485,7 @@ async function execute(context, name, data = {}) {
     case "removerole": {
       requirePermission(member, PermissionFlagsBits.ManageRoles, "Manage Roles");
       const targetMember = await getMember(guild, data.target);
-      assertCanManageRole({ actor: member, target: targetMember, bot: guild.members.me, role: data.role, everyoneRoleId: guild.id });
+      assertCanManageRole({ actor: member, target: targetMember, bot: guild.members.me, role: data.role, everyoneRoleId: guild.id, guild });
       if (name === "role") await targetMember.roles.add(data.role);
       else await targetMember.roles.remove(data.role);
       logAction(guild.id, user.id, name, data.target.id, data.role.name);
