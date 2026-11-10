@@ -286,7 +286,7 @@ async function finishGiveawayInternal(giveaway, reroll = false) {
       const current = statements.getGiveaway.get(giveaway.id, giveaway.guild_id);
       if (current?.status !== "ended") throw new Error(`Could not persist ended state for giveaway #${giveaway.id}.`);
     }
-    if (winners.length) {
+    if (ended.changes && winners.length) {
       await channel.send({
         content: `Congratulations ${winners.map(id => `<@${id}>`).join(", ")}! You won **${giveaway.prize}**.`,
         allowedMentions: { users: winners }
