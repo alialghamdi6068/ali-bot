@@ -37,3 +37,16 @@ test("role changes require the role and target member below both actor and bot",
   assert.throws(() => assertCanManageRole({ actor, target: member("target", 5), bot, role: { ...role, id: "guild" }, everyoneRoleId: "guild" }), /@everyone/);
   assert.throws(() => assertCanManageRole({ actor, target: member("target", 5), bot, role: { ...role, managed: true }, everyoneRoleId: "guild" }), /Managed/);
 });
+
+test("server owner is exempt from actor hierarchy when managing roles", () => {
+  const owner = member("owner", 1);
+  const guild = { ownerId: "owner" };
+  assert.doesNotThrow(() => assertCanManageRole({
+    actor: owner,
+    target: member("target", 9),
+    bot: member("bot", 10),
+    role: { id: "role", position: 8, managed: false },
+    everyoneRoleId: "guild",
+    guild
+  }));
+});
