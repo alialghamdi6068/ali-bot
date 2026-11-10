@@ -30,10 +30,17 @@ Slash commands use English names without underscores. Prefix commands use `!` an
 - Tickets: `/ticket`, `/close`, `/reopen`, `/delete`, `/add`, `/remove`, `/claim`
 - Giveaways: `/giveaway`, `/giveawaylist`, `/endgiveaway`, `/reroll`
 - Utility: `/say`, `/dm`, `/role`, `/removerole`, `/help`, `/userinfo`, `/serverinfo`, `/ping`, `/logs`
+- Server tools: `/maintenance`, `/lock`, `/unlock`, `/slowmode`, `/announce`, `/notify`, `/reminder`
 
 Equivalent Arabic prefix commands are shown by `!مساعدة` and `/help`.
 
 Examples:
+- `!صيانة تشغيل Scheduled maintenance`
+- `!قفل الروم` / `!فتح الروم`
+- `!بطء 10`
+- `!اعلان Server update`
+- `!تنبيه @role Please check the update`
+- `!تذكير 30m Check the support ticket`
 - `!حظر @member reason`
 - `!تايم @member 10m reason`
 - `!تحذير @member reason`
@@ -43,7 +50,7 @@ Examples:
 
 ## Persistence
 
-SQLite uses WAL mode, foreign keys, and a busy timeout. Ticket numbering, ticket records, warnings, giveaway entries and states, and action logs survive restarts. Keep the `data/` directory on persistent storage and include it in your own backup policy.
+SQLite uses WAL mode, foreign keys, and a busy timeout. Ticket numbering, ticket records, warnings, giveaway entries and states, maintenance settings, reminders, and action logs survive restarts. Reminder delivery is restored after restarts. Keep the `data/` directory on persistent storage and include it in your own backup policy.
 
 ## Presence
 
