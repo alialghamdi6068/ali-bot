@@ -431,6 +431,7 @@ async function execute(context, name, data = {}) {
       requirePermission(member, PermissionFlagsBits.ManageRoles, "Manage Roles");
       const targetMember = await getMember(guild, data.target);
       const botMember = guild.members.me;
+      if (data.role.id === guild.id) throw new Error("The @everyone role cannot be managed with this command.");
       if (data.role.position >= botMember.roles.highest.position) throw new Error("I cannot manage a role equal to or higher than my highest role.");
       if (data.role.managed) throw new Error("Managed integration roles cannot be assigned manually.");
       if (name === "role") await targetMember.roles.add(data.role);
@@ -505,11 +506,9 @@ function parsePrefixArguments(message, commandName) {
 }
 
 function parseMention(message, token) {
-  const mentioned = message.mentions.users.first();
-  if (mentioned) return mentioned;
   const id = token?.replace(/[<@!>]/g, "");
   if (/^\d{17,20}$/.test(id ?? "")) return client.users.fetch(id);
-  return null;
+  return message.mentions.users.first() ?? null;
 }
 
 async function handlePrefix(message) {
