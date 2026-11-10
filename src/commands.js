@@ -40,6 +40,7 @@ const commands = [
     .addStringOption(o => o.setName("duration").setDescription("Examples: 10m, 2h, 1d").setRequired(true))
     .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20).setRequired(true))
     .addChannelOption(o => o.setName("channel").setDescription("Where to post").addChannelTypes(ChannelType.GuildText)),
+  new SlashCommandBuilder().setName("giveawaylist").setDescription("List active giveaways"),
   new SlashCommandBuilder().setName("endgiveaway").setDescription("End a giveaway")
     .addIntegerOption(o => o.setName("giveawayid").setDescription("Giveaway number").setRequired(true)),
   new SlashCommandBuilder().setName("reroll").setDescription("Reroll giveaway winners")
