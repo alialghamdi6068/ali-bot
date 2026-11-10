@@ -102,6 +102,7 @@ const statements = {
     VALUES(@guildId, @channelId, @hostId, @prize, @winnersCount, @endsAt, @createdAt)
   `),
   setGiveawayMessage: db.prepare("UPDATE giveaways SET message_id = ? WHERE id = ?"),
+  deleteGiveaway: db.prepare("DELETE FROM giveaways WHERE id = ?"),
   getGiveaway: db.prepare("SELECT * FROM giveaways WHERE id = ? AND guild_id = ?"),
   getActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE status = 'active'"),
   getGuildActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE guild_id = ? AND status = 'active' ORDER BY id DESC LIMIT 15"),
