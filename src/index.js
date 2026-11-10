@@ -197,6 +197,9 @@ async function claimTicket(context) {
 async function createGiveaway(context, prize, durationText, winnersCount, targetChannel) {
   requirePermission(context.member, PermissionFlagsBits.ManageGuild, "Manage Server");
   const duration = parseDuration(durationText);
+  if (typeof prize !== "string" || prize.trim().length < 1 || prize.length > 200) {
+    throw new Error("Giveaway prize must contain between 1 and 200 characters.");
+  }
   if (!duration || duration < 60_000 || duration > 30 * 24 * 60 * 60 * 1000) {
     throw new Error("Giveaway duration must be between 1 minute and 30 days (examples: 10m, 2h, 1d).");
   }
@@ -353,7 +356,7 @@ async function moderation(context, name, data) {
     const description = rows.length
       ? rows.map(w => `**#${w.id}** — ${w.reason}\nBy <@${w.moderator_id}> • <t:${Math.floor(w.created_at / 1000)}:R>`).join("\n\n")
       : "No warnings found.";
-    await reply(context, { embeds: [new EmbedBuilder().setColor(0xe67e22).setTitle(`Warnings for ${data.target.tag}`).setDescription(description)] });
+    await reply(context, { embeds: [new EmbedBuilder().setColor(0xe67e22).setTitle(`Warnings for ${data.target.tag}`).setDescription(description.slice(0, 4000))] });
     return;
   }
   if (name === "clearwarn") {
@@ -486,7 +489,7 @@ async function execute(context, name, data = {}) {
       const description = rows.length
         ? rows.map(row => `**#${row.id} ${row.action}** • <@${row.actor_id}> • ${row.details.slice(0, 160)} • <t:${Math.floor(row.created_at / 1000)}:R>`).join("\n")
         : "No logs recorded yet.";
-      await reply(context, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("Recent Logs").setDescription(description)] });
+      await reply(context, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("Recent Logs").setDescription(description.slice(0, 4000))] });
       break;
     }
     default:
@@ -609,7 +612,8 @@ async function handlePrefix(message) {
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   try {
-    await client.application.commands.set(slashCommands, GUILD_ID);
+    const configuredGuild = await client.guilds.fetch(GUILD_ID);
+    await configuredGuild.commands.set(slashCommands);
     console.log(`Registered ${slashCommands.length} slash commands for guild ${GUILD_ID}.`);
   } catch (error) {
     console.error("Failed to register guild slash commands:", error);
