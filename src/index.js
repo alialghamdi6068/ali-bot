@@ -263,7 +263,7 @@ async function finishGiveawayInternal(giveaway, reroll = false) {
   const embed = new EmbedBuilder()
     .setColor(0x95a5a6)
     .setTitle("Giveaway Ended")
-    .setDescription(`**Prize:** ${giveaway.prize}\\n**Winners:** ${winners.length ? winners.map(id => `<@${id}>`).join(", ") : "No valid entries."}`)
+    .setDescription(`**Prize:** ${giveaway.prize}\n**Winners:** ${winners.length ? winners.map(id => `<@${id}>`).join(", ") : "No valid entries."}`)
     .setFooter({ text: `Giveaway #${giveaway.id}` });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`giveaway:ended:${giveaway.id}`).setLabel("Giveaway Ended").setStyle(ButtonStyle.Secondary).setDisabled(true)
