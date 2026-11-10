@@ -68,6 +68,54 @@ function getMember(guild, user) {
   return guild.members.fetch(user.id);
 }
 
+const reminderTimers = new Map();
+
+async function deliverReminder(reminder) {
+  try {
+    const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
+    if (channel?.isTextBased()) {
+      await channel.send({ content: '<@' + reminder.user_id + '> ⏰ Reminder: ' + reminder.message, allowedMentions: { users: [reminder.user_id] } });
+    } else {
+      const recipient = await client.users.fetch(reminder.user_id);
+      await recipient.send('⏰ Reminder: ' + reminder.message);
+    }
+    statements.completeReminder.run("sent", reminder.id);
+    logAction(reminder.guild_id, reminder.user_id, "reminder_sent", reminder.user_id, "Reminder #" + reminder.id);
+  } catch (error) {
+    console.error("Failed to deliver reminder #" + reminder.id + ":", error);
+    statements.completeReminder.run("failed", reminder.id);
+  } finally {
+    reminderTimers.delete(reminder.id);
+  }
+}
+
+function scheduleReminder(reminder) {
+  if (reminderTimers.has(reminder.id)) clearTimeout(reminderTimers.get(reminder.id));
+  const delay = Math.max(0, reminder.due_at - Date.now());
+  const timer = setTimeout(() => {
+    if (reminder.due_at > Date.now()) return scheduleReminder(reminder);
+    deliverReminder(reminder);
+  }, Math.min(delay, 2_147_000_000));
+  timer.unref?.();
+  reminderTimers.set(reminder.id, timer);
+}
+
+async function createReminder(context, durationText, message) {
+  const duration = parseDuration(durationText);
+  if (!duration || duration < 60_000 || duration > 30 * 24 * 60 * 60 * 1000) {
+    throw new Error("Reminder duration must be between 1 minute and 30 days (examples: 10m, 2h, 1d).");
+  }
+  if (typeof message !== "string" || !message.trim() || message.length > 1000) {
+    throw new Error("Reminder text must contain between 1 and 1000 characters.");
+  }
+  const dueAt = Date.now() + duration;
+  const result = statements.createReminder.run(context.guild.id, context.user.id, context.channel.id, message.trim(), dueAt, Date.now());
+  const id = Number(result.lastInsertRowid);
+  scheduleReminder({ id, guild_id: context.guild.id, user_id: context.user.id, channel_id: context.channel.id, message: message.trim(), due_at: dueAt });
+  logAction(context.guild.id, context.user.id, "reminder_create", context.user.id, "Reminder #" + id);
+  await reply(context, "⏰ Reminder #" + id + " set for <t:" + Math.floor(dueAt / 1000) + ":F>.");
+}
+
 async function reply(context, content, ephemeral = true) {
   if (context.isInteraction) {
     const payload = typeof content === "string" ? { content } : content;
@@ -427,11 +475,75 @@ async function execute(context, name, data = {}) {
   const { guild, member, user, channel } = context;
   if (!guild || !isInConfiguredGuild(guild)) throw new Error("This bot is configured for one server only.");
 
+  const maintenanceEnabled = statements.getSetting.get("maintenance_enabled")?.value === "1";
+  if (maintenanceEnabled && name !== "maintenance" && !hasPermission(member, PermissionFlagsBits.ManageGuild)) {
+    const notice = statements.getSetting.get("maintenance_reason")?.value || "The server is currently under maintenance.";
+    throw new Error("Maintenance mode is enabled. " + notice);
+  }
+
   if (["ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarn"].includes(name)) {
     return moderation(context, name, data);
   }
 
   switch (name) {
+    case "maintenance": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      const enabled = Boolean(data.enabled);
+      const reason = typeof data.reason === "string" && data.reason.trim() ? data.reason.trim().slice(0, 500) : "The server is currently under maintenance.";
+      statements.setSetting.run("maintenance_enabled", enabled ? "1" : "0");
+      statements.setSetting.run("maintenance_reason", enabled ? reason : "");
+      logAction(guild.id, user.id, "maintenance", null, enabled ? "Enabled: " + reason : "Disabled");
+      await reply(context, enabled ? "🔧 Maintenance mode enabled. " + reason : "✅ Maintenance mode disabled.", false);
+      break;
+    }
+    case "lock": {
+      requirePermission(member, PermissionFlagsBits.ManageChannels, "Manage Channels");
+      if (!channel?.isTextBased() || !channel.permissionOverwrites) throw new Error("This command requires a text channel.");
+      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false, SendMessagesInThreads: false, CreatePublicThreads: false, CreatePrivateThreads: false });
+      logAction(guild.id, user.id, "channel_lock", channel.id, channel.name);
+      await reply(context, "🔒 Locked <#" + channel.id + ">.", false);
+      break;
+    }
+    case "unlock": {
+      requirePermission(member, PermissionFlagsBits.ManageChannels, "Manage Channels");
+      if (!channel?.isTextBased() || !channel.permissionOverwrites) throw new Error("This command requires a text channel.");
+      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null, SendMessagesInThreads: null, CreatePublicThreads: null, CreatePrivateThreads: null });
+      logAction(guild.id, user.id, "channel_unlock", channel.id, channel.name);
+      await reply(context, "🔓 Unlocked <#" + channel.id + ">.", false);
+      break;
+    }
+    case "slowmode": {
+      requirePermission(member, PermissionFlagsBits.ManageChannels, "Manage Channels");
+      const seconds = Number(data.seconds);
+      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 21600) throw new Error("Slowmode must be between 0 and 21600 seconds.");
+      if (!channel?.setRateLimitPerUser) throw new Error("This channel does not support slowmode.");
+      await channel.setRateLimitPerUser(seconds, "Slowmode changed by " + user.tag);
+      logAction(guild.id, user.id, "slowmode", channel.id, seconds + " seconds");
+      await reply(context, seconds ? "🐢 Slowmode set to " + seconds + " seconds." : "🐢 Slowmode disabled.", false);
+      break;
+    }
+    case "announce": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new Error("Announcement must contain between 1 and 2000 characters.");
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("📢 Announcement").setDescription(data.message.trim()).setFooter({ text: "Announcement by " + user.tag }).setTimestamp();
+      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      logAction(guild.id, user.id, "announce", channel.id, data.message.slice(0, 500));
+      await reply(context, "Announcement sent.");
+      break;
+    }
+    case "notify": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new Error("Notification must contain between 1 and 2000 characters.");
+      const role = data.role ?? null;
+      if (role && !role.mentionable && !hasPermission(member, PermissionFlagsBits.MentionEveryone)) throw new Error("The role is not mentionable. You need Mention Everyone permission to notify it.");
+      const prefix = role ? "<@&" + role.id + "> " : "";
+      await channel.send({ content: prefix + data.message.trim(), allowedMentions: { roles: role ? [role.id] : [], parse: [] } });
+      logAction(guild.id, user.id, "notify", channel.id, data.message.slice(0, 500));
+      await reply(context, "Notification sent.");
+      break;
+    }
+    case "reminder":
+      return createReminder(context, data.duration, data.message);
     case "clear": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
       const amount = Number(data.amount);
@@ -511,10 +623,13 @@ async function execute(context, name, data = {}) {
         "`/giveaway` • `/giveawaylist` • `/endgiveaway` • `/reroll`",
         "**Other**",
         "`/say` • `/dm` • `/role` • `/removerole` • `/userinfo` • `/serverinfo` • `/ping` • `/logs`",
+        "**Server tools**",
+        "`/maintenance` • `/lock` • `/unlock` • `/slowmode` • `/announce` • `/notify` • `/reminder`",
         "**Arabic prefix**",
         "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح`",
         "`!تكت` • `!إغلاق تكت` • `!فتح تكت` • `!حذف تكت` • `!إضافة عضو` • `!إزالة عضو` • `!استلام تكت`",
-        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة`"
+        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة`",
+        "`!صيانة` • `!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!تذكير`"
       ].join("\n"));
       await reply(context, { embeds: [embed] });
       break;
@@ -657,6 +772,29 @@ async function handlePrefix(message) {
         data.giveawayId = Number(args[0]);
         if (!Number.isInteger(data.giveawayId)) throw new Error("Provide a giveaway ID.");
         break;
+      case "maintenance": {
+        const mode = args[0];
+        if (!["تشغيل", "ايقاف", "إيقاف", "on", "off"].includes(mode)) throw new Error("Usage: !صيانة تشغيل reason OR !صيانة إيقاف");
+        data.enabled = ["تشغيل", "on"].includes(mode);
+        data.reason = args.slice(1).join(" ");
+        break;
+      }
+      case "slowmode":
+        data.seconds = Number(args[0]);
+        break;
+      case "announce":
+        data.message = raw;
+        break;
+      case "notify": {
+        data.role = message.mentions.roles.first() ?? null;
+        data.message = data.role ? raw.replace("<@&" + data.role.id + ">", "").trim() : raw;
+        break;
+      }
+      case "reminder":
+        data.duration = args[0];
+        data.message = args.slice(1).join(" ");
+        if (!data.duration || !data.message) throw new Error("Usage: !تذكير 10m message");
+        break;
       case "userinfo":
         data.target = args.length ? await target() : message.author;
         break;
@@ -685,6 +823,9 @@ client.once("ready", async () => {
 
   for (const giveaway of statements.getActiveGiveaways.all()) {
     scheduleGiveawayEnd(giveaway.id, giveaway.ends_at);
+  }
+  for (const reminder of statements.getPendingReminders.all()) {
+    scheduleReminder(reminder);
   }
 });
 
@@ -740,6 +881,17 @@ client.on("interactionCreate", async interaction => {
     if (name === "dm") data.message = interaction.options.getString("message");
     if (["role", "removerole"].includes(name)) data.role = interaction.options.getRole("role");
     if (name === "userinfo") data.target = interaction.options.getUser("user") ?? interaction.user;
+    if (name === "maintenance") {
+      data.enabled = interaction.options.getBoolean("enabled");
+      data.reason = interaction.options.getString("reason") ?? "";
+    }
+    if (name === "slowmode") data.seconds = interaction.options.getInteger("seconds");
+    if (["announce", "notify"].includes(name)) data.message = interaction.options.getString("message");
+    if (name === "notify") data.role = interaction.options.getRole("role");
+    if (name === "reminder") {
+      data.duration = interaction.options.getString("duration");
+      data.message = interaction.options.getString("message");
+    }
 
     const context = {
       guild: interaction.guild,
