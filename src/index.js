@@ -43,7 +43,11 @@ const client = new Client({
 });
 
 function logAction(guildId, actorId, action, targetId, details) {
-  statements.addLog.run(guildId, actorId, action, targetId ?? null, String(details), Date.now());
+  try {
+    statements.addLog.run(guildId, actorId, action, targetId ?? null, String(details), Date.now());
+  } catch (error) {
+    console.error("Failed to persist action log:", error);
+  }
 }
 
 function isInConfiguredGuild(guild) {
@@ -117,13 +121,18 @@ async function createTicket(context) {
     reason: `Ticket #${number} created by ${user.tag}`
   });
 
-  statements.createTicket.run({
-    number,
-    guildId: guild.id,
-    channelId: ticketChannel.id,
-    userId: user.id,
-    createdAt: Date.now()
-  });
+  try {
+    statements.createTicket.run({
+      number,
+      guildId: guild.id,
+      channelId: ticketChannel.id,
+      userId: user.id,
+      createdAt: Date.now()
+    });
+  } catch (error) {
+    await ticketChannel.delete("Ticket database save failed").catch(() => {});
+    throw new Error(`Ticket could not be saved and its channel was cleaned up where possible: ${error.message}`);
+  }
   logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${number}`);
   try {
     await ticketChannel.send({
