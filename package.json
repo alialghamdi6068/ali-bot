@@ -6,8 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "deploy": "node scripts/deploy-commands.js",
-    "check": "node --check src/index.js && node --check src/database.js && node --check src/commands.js && node --check scripts/deploy-commands.js",
+    "check": "node --check src/index.js && node --check src/database.js && node --check src/commands.js && node --check src/utils.js",
     "test": "node --test"
   },
   "engines": {
