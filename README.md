@@ -1,6 +1,6 @@
 # Ali Bot
 
-A private, single-server Discord management bot built with Node.js, Discord.js, and SQLite.
+A personal, single-server Discord management bot built with Node.js, Discord.js, and SQLite.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Slash commands use English names without underscores. Prefix commands use `!` an
 
 - Moderation: `/ban`, `/unban`, `/kick`, `/timeout`, `/untimeout`, `/warn`, `/warnings`, `/clearwarn`, `/clear`
 - Tickets: `/ticket`, `/close`, `/reopen`, `/delete`, `/add`, `/remove`, `/claim`
-- Giveaways: `/giveaway`, `/endgiveaway`, `/reroll`
+- Giveaways: `/giveaway`, `/giveawaylist`, `/endgiveaway`, `/reroll`
 - Utility: `/say`, `/dm`, `/role`, `/removerole`, `/help`, `/userinfo`, `/serverinfo`, `/ping`, `/logs`
 
 Equivalent Arabic prefix commands are shown by `!مساعدة` and `/help`.
