@@ -175,7 +175,6 @@ async function deleteTicket(context) {
   const ticket = getTicket(context.channel.id);
   if (!ticket) throw new Error("This channel is not a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
-  await reply(context, `Deleting ticket #${ticket.number}.`, false);
   await context.channel.delete(`Ticket #${ticket.number} deleted by ${context.user.tag}`);
   statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
   logAction(context.guild.id, context.user.id, "ticket_delete", ticket.user_id, `Ticket #${ticket.number}`);
@@ -249,7 +248,7 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
   await reply(context, `Giveaway #${id} created in <#${destination.id}>.`);
 }
 
-async function finishGiveaway(giveaway, reroll = false) {
+async function finishGiveawayInternal(giveaway, reroll = false) {
   const channel = await client.channels.fetch(giveaway.channel_id);
   if (!channel?.isTextBased()) throw new Error(`Giveaway #${giveaway.id} channel is unavailable; it will be retried.`);
   if (!giveaway.message_id) throw new Error(`Giveaway #${giveaway.id} has no linked message; refusing to mark it ended.`);
@@ -286,6 +285,15 @@ async function finishGiveaway(giveaway, reroll = false) {
     }
   }
   return winners;
+}
+
+const giveawayFinishes = new Map();
+function finishGiveaway(giveaway, reroll = false) {
+  const key = `${giveaway.id}:${reroll ? "reroll" : "end"}`;
+  if (giveawayFinishes.has(key)) return giveawayFinishes.get(key);
+  const pending = finishGiveawayInternal(giveaway, reroll).finally(() => giveawayFinishes.delete(key));
+  giveawayFinishes.set(key, pending);
+  return pending;
 }
 
 const giveawayTimers = new Map();
