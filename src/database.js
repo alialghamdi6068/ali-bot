@@ -63,6 +63,25 @@ db.exec(`
     PRIMARY KEY (giveaway_id, user_id)
   );
 
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    due_at INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reminders_status_due
+    ON reminders(status, due_at);
+
   CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -109,7 +128,12 @@ const statements = {
   enterGiveaway: db.prepare("INSERT OR IGNORE INTO giveaway_entries(giveaway_id, user_id, entered_at) VALUES(?, ?, ?)"),
   getGiveawayEntries: db.prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?"),
   endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status = 'active'"),
-  addLog: db.prepare(`
+  getSetting: db.prepare("SELECT value FROM settings WHERE key = ?"),
+  setSetting: db.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
+  createReminder: db.prepare("INSERT INTO reminders(guild_id, user_id, channel_id, message, due_at, created_at) VALUES(?, ?, ?, ?, ?, ?)"),
+  getPendingReminders: db.prepare("SELECT * FROM reminders WHERE status = 'pending' ORDER BY due_at"),
+  completeReminder: db.prepare("UPDATE reminders SET status = ? WHERE id = ? AND status = 'pending'"),
+    addLog: db.prepare(`
     INSERT INTO logs(guild_id, actor_id, action, target_id, details, created_at)
     VALUES(?, ?, ?, ?, ?, ?)
   `),
