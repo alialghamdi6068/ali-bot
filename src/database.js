@@ -104,6 +104,7 @@ const statements = {
   setGiveawayMessage: db.prepare("UPDATE giveaways SET message_id = ? WHERE id = ?"),
   getGiveaway: db.prepare("SELECT * FROM giveaways WHERE id = ? AND guild_id = ?"),
   getActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE status = 'active'"),
+  getGuildActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE guild_id = ? AND status = 'active' ORDER BY id DESC LIMIT 15"),
   enterGiveaway: db.prepare("INSERT OR IGNORE INTO giveaway_entries(giveaway_id, user_id, entered_at) VALUES(?, ?, ?)"),
   getGiveawayEntries: db.prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?"),
   endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status = 'active'"),
