@@ -739,7 +739,7 @@ async function execute(context, name, data = {}) {
     case "achievements": {
       const target = data.target ?? user;
       const rows = statements.getAchievements.all(guild.id, target.id);
-      const labels = { first_message: "First message", one_hundred_messages: "100 messages", level_five: "Reach level 5", five_invites: "Invite 5 members" };
+      const labels = { first_message: "First message", one_hundred_messages: "100 messages", five_hundred_messages: "500 messages", level_five: "Reach level 5", level_ten: "Reach level 10", five_invites: "Invite 5 members", ten_invites: "Invite 10 members" };
       const description = rows.length ? rows.map(row => "🏆 " + (labels[row.achievement_key] ?? row.achievement_key) + " — <t:" + Math.floor(row.unlocked_at / 1000) + ":d>").join("\n") : "No achievements unlocked yet.";
       await reply(context, { embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle("Achievements: " + target.username).setDescription(description)] });
       break;
