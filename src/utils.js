@@ -47,6 +47,7 @@ const PREFIX_COMMANDS = [
   ["رتبة تلقائية", "autorole"],
   ["قناة اقتراحات", "suggestions"],
   ["اقتراح", "suggest"],
+  ["مراجعة اقتراح", "suggestionreview"],
   ["قناة تقديمات", "applications"],
   ["تقديم", "apply"],
   ["اعداد التكت", "ticketconfig"],
