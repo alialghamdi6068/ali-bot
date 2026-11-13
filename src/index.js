@@ -134,6 +134,7 @@ function getTicket(channelId) {
 
 async function createTicket(context, category = "support") {
   const { guild, user, channel } = context;
+  if (!["support", "complaint", "partnership"].includes(category)) throw new Error("Choose support, complaint, or partnership.");
   const existing = statements.getOpenTicketByUser.get(guild.id, user.id);
   if (existing) throw new Error(`You already have an open ticket: <#${existing.channel_id}>.`);
 
@@ -573,8 +574,6 @@ async function execute(context, name, data = {}) {
     }
     case "suggest":
       return community.submitSuggestion(guild, user, data.content, logAction);
-    case "apply":
-      throw new Error("Use the /apply command to open the application form.");
     case "welcome": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       if (!data.channel?.isTextBased()) throw new Error("Choose a valid welcome text channel.");
@@ -910,6 +909,9 @@ async function handlePrefix(message) {
         data.message = data.role ? raw.replace("<@&" + data.role.id + ">", "").trim() : raw;
         break;
       }
+      case "ticket":
+        data.category = ({ "دعم": "support", "شكوى": "complaint", "شراكة": "partnership" })[args[0]] ?? args[0] ?? "support";
+        break;
       case "suggest":
         data.content = raw;
         break;
@@ -928,8 +930,14 @@ async function handlePrefix(message) {
       case "suggestions": case "applications":
         data.channel = message.mentions.channels.first();
         break;
-      case "ticketconfig":
-        data.transcriptChannel = message.mentions.channels.first();
+      case "ticketconfig": {
+        const mentioned = [...message.mentions.channels.values()];
+        data.transcriptChannel = mentioned[0];
+        data.supportCategory = mentioned[1];
+        data.complaintCategory = mentioned[2];
+        data.partnershipCategory = mentioned[3];
+        break;
+      }
         break;
       case "antiswear": {
         const [action, word] = args;
@@ -966,7 +974,7 @@ client.once("ready", async () => {
   } catch (error) {
     console.error("Failed to register guild slash commands:", error);
   }
-  await community.cacheInvites(await client.guilds.fetch(GUILD_ID).then(g => g.fetch()).catch(() => client.guilds.cache.get(GUILD_ID)));
+  await community.cacheInvites(await client.guilds.fetch(GUILD_ID).catch(() => client.guilds.cache.get(GUILD_ID)));
   client.user.setPresence({
     status: PresenceUpdateStatus.DoNotDisturb,
     activities: [{ name: "𝓐𝓵𝓲 𝓐𝓵𝓰𝓱𝓪𝓶𝓭𝓲", type: ActivityType.Watching }]
