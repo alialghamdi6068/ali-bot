@@ -1080,6 +1080,7 @@ client.on("guildMemberAdd", member => {
   if (member.guild.id === GUILD_ID) community.handleMemberAdd(member, logAction).catch(error => console.error("Member join handler failed:", error));
 });
 client.on("inviteCreate", invite => community.handleInviteCreate(invite).catch(error => console.error("Invite cache update failed:", error)));
+client.on("inviteDelete", invite => community.handleInviteDelete(invite).catch(error => console.error("Invite cache cleanup failed:", error)));
 
 client.on("channelDelete", channel => {
   const ticket = getTicket(channel.id);
