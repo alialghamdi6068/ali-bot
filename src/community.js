@@ -80,7 +80,7 @@ function checkAchievements(guildId, userId, row, logAction) {
 }
 
 async function handleMessage(message, logAction) {
-  if (!message.guild || message.guild.id !== process.env.GUILD_ID || message.author.bot) return;
+  if (!message.guild || message.guild.id !== process.env.GUILD_ID || message.author.bot) return false;
   const blocked = statements.getBlockedWords.all(message.guild.id).map(x => x.word.toLocaleLowerCase("en-US"));
   const tokens = message.content.toLocaleLowerCase("en-US").split(/[^\p{L}\p{N}]+/u);
   const match = blocked.find(word => word && tokens.includes(word));
@@ -91,7 +91,7 @@ async function handleMessage(message, logAction) {
     if (message.member?.moderatable) await message.member.timeout(15 * 60 * 1000, "Automatic anti-swear filter").catch(() => {});
     await message.author.send("Your message in " + message.guild.name + " was removed by the word filter. Warning #" + warningId + ". A 15-minute timeout was applied where possible.").catch(() => {});
     logAction(message.guild.id, message.client.user.id, "anti_swear", message.author.id, "Warning #" + warningId + "; matched configured word");
-    return;
+    return true;
   }
 
   const counted = statements.recordMessage.get(message.guild.id, message.author.id);
@@ -110,6 +110,7 @@ async function handleMessage(message, logAction) {
     }
   }
   checkAchievements(message.guild.id, message.author.id, { ...row, messages: counted.messages, level }, logAction);
+  return false;
 }
 
 async function submitSuggestion(guild, user, content, logAction) {
