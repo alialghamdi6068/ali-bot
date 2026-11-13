@@ -26,7 +26,12 @@ const commands = [
     .addIntegerOption(o => o.setName("warningid").setDescription("Warning number").setRequired(true)),
   new SlashCommandBuilder().setName("clear").setDescription("Delete recent messages")
     .addIntegerOption(o => o.setName("amount").setDescription("1 to 100").setMinValue(1).setMaxValue(100).setRequired(true)),
-  new SlashCommandBuilder().setName("ticket").setDescription("Create your support ticket"),
+  new SlashCommandBuilder().setName("ticket").setDescription("Create a support ticket")
+    .addStringOption(o => o.setName("category").setDescription("Ticket category").addChoices(
+      { name: "Support", value: "support" },
+      { name: "Complaint", value: "complaint" },
+      { name: "Partnership", value: "partnership" }
+    )),
   new SlashCommandBuilder().setName("close").setDescription("Close this ticket"),
   new SlashCommandBuilder().setName("reopen").setDescription("Reopen this ticket"),
   new SlashCommandBuilder().setName("delete").setDescription("Delete this ticket"),
@@ -76,6 +81,35 @@ const commands = [
   new SlashCommandBuilder().setName("reminder").setDescription("Set a personal reminder")
     .addStringOption(o => o.setName("duration").setDescription("Examples: 10m, 2h, 1d").setRequired(true))
     .addStringOption(o => o.setName("message").setDescription("What should I remind you about?").setMaxLength(1000).setRequired(true)),
+  new SlashCommandBuilder().setName("welcome").setDescription("Configure the welcome channel and message")
+    .addChannelOption(o => o.setName("channel").setDescription("Welcome channel").addChannelTypes(ChannelType.GuildText).setRequired(true))
+    .addStringOption(o => o.setName("message").setDescription("Use {user}, {username}, {server}, {count}").setMaxLength(1500).setRequired(true)),
+  new SlashCommandBuilder().setName("autorole").setDescription("Set the automatic role for new members")
+    .addRoleOption(o => o.setName("role").setDescription("Role assigned to new members").setRequired(true)),
+  new SlashCommandBuilder().setName("suggestions").setDescription("Set the suggestions channel")
+    .addChannelOption(o => o.setName("channel").setDescription("Suggestions channel").addChannelTypes(ChannelType.GuildText).setRequired(true)),
+  new SlashCommandBuilder().setName("suggest").setDescription("Submit a server suggestion")
+    .addStringOption(o => o.setName("content").setDescription("Your suggestion").setMinLength(5).setMaxLength(1500).setRequired(true)),
+  new SlashCommandBuilder().setName("applications").setDescription("Set the staff applications channel")
+    .addChannelOption(o => o.setName("channel").setDescription("Applications channel").addChannelTypes(ChannelType.GuildText).setRequired(true)),
+  new SlashCommandBuilder().setName("apply").setDescription("Submit a staff application"),
+  new SlashCommandBuilder().setName("ticketconfig").setDescription("Configure ticket transcripts and category channels")
+    .addChannelOption(o => o.setName("transcriptchannel").setDescription("Transcript channel").addChannelTypes(ChannelType.GuildText))
+    .addChannelOption(o => o.setName("supportcategory").setDescription("Support category").addChannelTypes(ChannelType.GuildCategory))
+    .addChannelOption(o => o.setName("complaintcategory").setDescription("Complaint category").addChannelTypes(ChannelType.GuildCategory))
+    .addChannelOption(o => o.setName("partnershipcategory").setDescription("Partnership category").addChannelTypes(ChannelType.GuildCategory)),
+  new SlashCommandBuilder().setName("antiswear").setDescription("Manage the blocked-word filter")
+    .addStringOption(o => o.setName("action").setDescription("What to do").setRequired(true).addChoices(
+      { name: "Add word", value: "add" }, { name: "Remove word", value: "remove" }, { name: "List words", value: "list" }
+    ))
+    .addStringOption(o => o.setName("word").setDescription("Word to add or remove").setMaxLength(80)),
+  new SlashCommandBuilder().setName("level").setDescription("Show a member's level")
+    .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
+  new SlashCommandBuilder().setName("leaderboard").setDescription("Show the server XP leaderboard"),
+  new SlashCommandBuilder().setName("invites").setDescription("Show invite counts")
+    .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
+  new SlashCommandBuilder().setName("achievements").setDescription("Show unlocked achievements")
+    .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
     new SlashCommandBuilder().setName("logs").setDescription("Show recent moderation and bot logs")
 ];
 
