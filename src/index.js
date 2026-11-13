@@ -520,7 +520,7 @@ async function execute(context, name, data = {}) {
   const maintenanceEnabled = statements.getSetting.get("maintenance_enabled")?.value === "1";
   if (maintenanceEnabled && name !== "maintenance" && !hasPermission(member, PermissionFlagsBits.ManageGuild)) {
     const notice = statements.getSetting.get("maintenance_reason")?.value || "The server is currently under maintenance.";
-    throw new Error("Maintenance mode is enabled. " + notice);
+    throw new Error("Bot maintenance mode is enabled. " + notice);
   }
 
   if (["ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarn"].includes(name)) {
@@ -535,7 +535,7 @@ async function execute(context, name, data = {}) {
       statements.setSetting.run("maintenance_enabled", enabled ? "1" : "0");
       statements.setSetting.run("maintenance_reason", enabled ? reason : "");
       logAction(guild.id, user.id, "maintenance", null, enabled ? "Enabled: " + reason : "Disabled");
-      await reply(context, enabled ? "🔧 Maintenance mode enabled. " + reason : "✅ Maintenance mode disabled.", false);
+      await reply(context, enabled ? "🔧 Bot maintenance mode enabled. " + reason : "✅ Bot maintenance mode disabled.", false);
       break;
     }
     case "lock": {
@@ -577,7 +577,9 @@ async function execute(context, name, data = {}) {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new Error("Notification must contain between 1 and 2000 characters.");
       const role = data.role ?? null;
-      if (role && !role.mentionable && !hasPermission(member, PermissionFlagsBits.MentionEveryone)) throw new Error("The role is not mentionable. You need Mention Everyone permission to notify it.");
+      if (role && !role.mentionable && (!hasPermission(member, PermissionFlagsBits.MentionEveryone) || !guild.members.me.permissions.has(PermissionFlagsBits.MentionEveryone))) {
+        throw new Error("The role is not mentionable. Both you and the bot need Mention Everyone permission to notify it.");
+      }
       const prefix = role ? "<@&" + role.id + "> " : "";
       await channel.send({ content: prefix + data.message.trim(), allowedMentions: { roles: role ? [role.id] : [], parse: [] } });
       logAction(guild.id, user.id, "notify", channel.id, data.message.slice(0, 500));
@@ -638,6 +640,7 @@ async function execute(context, name, data = {}) {
       requirePermission(member, PermissionFlagsBits.ManageRoles, "Manage Roles");
       const role = data.role;
       if (!role || role.managed || role.id === guild.id || role.position >= guild.members.me.roles.highest.position) throw new Error("Choose a normal role below the bot's highest role.");
+      assertCanManageRole({ actor: member, target: member, bot: guild.members.me, role, everyoneRoleId: guild.id, guild });
       community.setSetting("autorole_id", role.id);
       logAction(guild.id, user.id, "autorole_config", role.id, role.name);
       await reply(context, "Automatic role configured: **" + role.name + "**.", false);
