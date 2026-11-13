@@ -600,7 +600,8 @@ async function execute(context, name, data = {}) {
     }
     case "reminder":
       return createReminder(context, data.duration, data.message);
-    case "clear": {
+    case "clear":
+    case "purge": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
       const amount = Number(data.amount);
       if (!Number.isInteger(amount) || amount < 1 || amount > 100) throw new Error("Amount must be between 1 and 100.");
@@ -802,7 +803,8 @@ async function execute(context, name, data = {}) {
       await reply(context, name === "role" ? `Added **${data.role.name}** to <@${data.target.id}>.` : `Removed **${data.role.name}** from <@${data.target.id}>.`);
       break;
     }
-    case "help": {
+    case "help":
+    case "commands": {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Ali Bot Commands").setDescription([
         "**Moderation**",
         "`/ban` • `/unban` • `/kick` • `/timeout` • `/untimeout` • `/warn` • `/warnings` • `/clearwarn` • `/clear`",
@@ -931,7 +933,7 @@ async function handlePrefix(message) {
         data.warningId = Number(args[1]);
         if (!Number.isInteger(data.warningId)) throw new Error("Usage: !مسح تحذير @member warning_id");
         break;
-      case "clear":
+      case "clear": case "purge":
         data.amount = Number(args[0]);
         break;
       case "add": case "remove": case "dm":
@@ -1124,7 +1126,7 @@ client.on("interactionCreate", async interaction => {
     if (name === "timeout") data.duration = interaction.options.getString("duration");
     if (name === "warn") data.reason = interaction.options.getString("reason");
     if (name === "clearwarn") data.warningId = interaction.options.getInteger("warningid");
-    if (name === "clear") data.amount = interaction.options.getInteger("amount");
+    if (["clear", "purge"].includes(name)) data.amount = interaction.options.getInteger("amount");
     if (name === "giveaway") {
       data.prize = interaction.options.getString("prize");
       data.duration = interaction.options.getString("duration");
