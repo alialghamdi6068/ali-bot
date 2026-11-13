@@ -807,7 +807,7 @@ async function execute(context, name, data = {}) {
     case "commands": {
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Ali Bot Commands").setDescription([
         "**Moderation**",
-        "`/ban` • `/unban` • `/kick` • `/timeout` • `/untimeout` • `/warn` • `/warnings` • `/clearwarn` • `/clear`",
+        "`/ban` • `/unban` • `/kick` • `/timeout` • `/untimeout` • `/warn` • `/warnings` • `/clearwarn` • `/clear` • `/purge`",
         "**Tickets**",
         "`/ticket` • `/close` • `/reopen` • `/delete` • `/add` • `/remove` • `/claim`",
         "**Giveaways**",
@@ -819,9 +819,9 @@ async function execute(context, name, data = {}) {
         "**Community**",
         "`/welcome` • `/autorole` • `/suggestions` • `/suggest` • `/suggestionreview` • `/applications` • `/apply` • `/ticketconfig` • `/antiswear` • `/level` • `/leaderboard` • `/invites` • `/achievements`",
         "**Arabic prefix**",
-        "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح`",
+        "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح` • `!تنظيف`",
         "`!تكت` • `!إغلاق تكت` • `!فتح تكت` • `!حذف تكت` • `!إضافة عضو` • `!إزالة عضو` • `!استلام تكت`",
-        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة`",
+        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة` • `!أوامر`",
         "`!صيانة` • `!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!تذكير`",
         "`!قناة ترحيب` • `!رتبة تلقائية` • `!قناة اقتراحات` • `!اقتراح` • `!مراجعة اقتراح` • `!قناة تقديمات` • `!تقديم` • `!إعداد التكت` • `!فلترة كلمات`",
         "`!مستوى` • `!المتصدرين` • `!دعوات` • `!إنجازات`"
