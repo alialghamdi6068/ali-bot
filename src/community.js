@@ -32,6 +32,12 @@ async function handleInviteCreate(invite) {
   inviteCache.set(invite.guild.id, map);
 }
 
+async function handleInviteDelete(invite) {
+  if (!invite.guild) return;
+  const map = inviteCache.get(invite.guild.id);
+  map?.delete(invite.code);
+}
+
 async function handleMemberAdd(member, logAction) {
   const roleId = setting("autorole_id");
   if (roleId) {
@@ -262,7 +268,7 @@ async function createTranscript(channel, ticket, guild, logAction) {
 }
 
 module.exports = {
-  setting, setSetting, cacheInvites, handleInviteCreate, handleMemberAdd,
+  setting, setSetting, cacheInvites, handleInviteCreate, handleInviteDelete, handleMemberAdd,
   handleMessage, submitSuggestion, submitApplication, openApplication,
   handleInteraction, createTranscript
 };
