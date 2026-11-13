@@ -27,6 +27,7 @@ test("resolves single-word prefix commands", () => {
   assert.deepEqual(resolvePrefixCommand("رتبة تلقائية @role"), { command: "autorole", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("قناة اقتراحات #channel"), { command: "suggestions", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("اقتراح نص"), { command: "suggest", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("مراجعة اقتراح 12 approved"), { command: "suggestionreview", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("قناة تقديمات #channel"), { command: "applications", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("تقديم age | timezone | experience | reason"), { command: "apply", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("إعداد التكت #transcript"), { command: "ticketconfig", consumed: 2 });
