@@ -102,7 +102,13 @@ async function handleMessage(message, logAction) {
   }
   const row = statements.addXp.get(message.guild.id, message.author.id, randomInt(10, 21), Date.now());
   const level = Math.floor(Math.sqrt(row.xp / 100));
-  if (level !== row.level) statements.setLevel.run(level, message.guild.id, message.author.id);
+  if (level !== row.level) {
+    statements.setLevel.run(level, message.guild.id, message.author.id);
+    if (level > row.level) {
+      logAction(message.guild.id, message.client.user.id, "level_up", message.author.id, "Reached level " + level);
+      await message.channel.send({ content: "🎉 <@" + message.author.id + "> reached level **" + level + "**!", allowedMentions: { users: [message.author.id] } }).catch(() => {});
+    }
+  }
   checkAchievements(message.guild.id, message.author.id, { ...row, messages: counted.messages, level }, logAction);
 }
 
