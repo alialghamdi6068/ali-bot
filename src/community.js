@@ -81,14 +81,16 @@ function checkAchievements(guildId, userId, row, logAction) {
 
 async function handleMessage(message, logAction) {
   if (!message.guild || message.guild.id !== process.env.GUILD_ID || message.author.bot) return;
-  const blocked = statements.getBlockedWords.all(message.guild.id).map(x => x.word);
-  const text = message.content.toLocaleLowerCase("en-US");
-  const match = blocked.find(word => word && text.includes(word.toLocaleLowerCase("en-US")));
+  const blocked = statements.getBlockedWords.all(message.guild.id).map(x => x.word.toLocaleLowerCase("en-US"));
+  const tokens = message.content.toLocaleLowerCase("en-US").split(/[^\\p{L}\\p{N}]+/u);
+  const match = blocked.find(word => word && tokens.includes(word));
   if (match) {
     await message.delete().catch(() => {});
+    const warning = statements.addWarning.run(message.guild.id, message.author.id, message.client.user.id, "Automatic anti-swear filter", Date.now());
+    const warningId = Number(warning.lastInsertRowid);
     if (message.member?.moderatable) await message.member.timeout(15 * 60 * 1000, "Automatic anti-swear filter").catch(() => {});
-    await message.author.send("Your message in " + message.guild.name + " was removed by the server word filter.").catch(() => {});
-    logAction(message.guild.id, message.client.user.id, "anti_swear", message.author.id, "Matched blocked word");
+    await message.author.send("Your message in " + message.guild.name + " was removed by the word filter. Warning #" + warningId + ". A 15-minute timeout was applied where possible.").catch(() => {});
+    logAction(message.guild.id, message.client.user.id, "anti_swear", message.author.id, "Warning #" + warningId + "; matched configured word");
     return;
   }
 
