@@ -211,6 +211,7 @@ const statements = {
   `),
   getLogs: db.prepare("SELECT * FROM logs WHERE guild_id = ? ORDER BY id DESC LIMIT 15"),
   getSuggestionChannel: db.prepare("SELECT * FROM suggestions WHERE id = ? AND guild_id = ?"),
+  updateSuggestionStatus: db.prepare("UPDATE suggestions SET status = ? WHERE id = ? AND guild_id = ?"),
   createSuggestion: db.prepare("INSERT INTO suggestions(guild_id, channel_id, user_id, content, created_at) VALUES(?, ?, ?, ?, ?)"),
   setSuggestionMessage: db.prepare("UPDATE suggestions SET message_id = ? WHERE id = ?"),
   deleteSuggestion: db.prepare("DELETE FROM suggestions WHERE id = ?"),
