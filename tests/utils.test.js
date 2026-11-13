@@ -13,6 +13,8 @@ test("resolves multi-word Arabic prefix commands before shorter commands", () =>
 
 test("resolves single-word prefix commands", () => {
   assert.deepEqual(resolvePrefixCommand("حظر @user"), { command: "ban", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("تنظيف 25"), { command: "purge", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("أوامر"), { command: "commands", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("قول hello world"), { command: "say", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("dm @user hello"), { command: "dm", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("صيانة تشغيل"), { command: "maintenance", consumed: 1 });
