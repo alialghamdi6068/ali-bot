@@ -1068,8 +1068,11 @@ client.once("ready", async () => {
 });
 
 client.on("messageCreate", async message => {
-  await community.handleMessage(message, logAction).catch(error => console.error("Community message handler failed:", error));
-  await handlePrefix(message);
+  const filtered = await community.handleMessage(message, logAction).catch(error => {
+    console.error("Community message handler failed:", error);
+    return false;
+  });
+  if (!filtered) await handlePrefix(message);
 });
 client.on("guildMemberAdd", member => {
   if (member.guild.id === GUILD_ID) community.handleMemberAdd(member, logAction).catch(error => console.error("Member join handler failed:", error));
