@@ -20,6 +20,7 @@ const slashCommands = require("./commands");
 const { randomInt } = require("node:crypto");
 const { resolvePrefixCommand, parseDuration, formatDate } = require("./utils");
 const { assertCanModerateMember, assertCanManageRole } = require("./permissions");
+const community = require("./community");
 
 const requiredEnv = ["DISCORD_TOKEN", "GUILD_ID"];
 for (const key of requiredEnv) {
@@ -37,6 +38,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildInvites,
     GatewayIntentBits.MessageContent
   ],
   partials: [Partials.Channel]
@@ -129,7 +132,7 @@ function getTicket(channelId) {
   return statements.getTicketByChannel.get(channelId);
 }
 
-async function createTicket(context) {
+async function createTicket(context, category = "support") {
   const { guild, user, channel } = context;
   const existing = statements.getOpenTicketByUser.get(guild.id, user.id);
   if (existing) throw new Error(`You already have an open ticket: <#${existing.channel_id}>.`);
@@ -141,6 +144,7 @@ async function createTicket(context) {
   const ticketChannel = await guild.channels.create({
     name: String(number),
     type: ChannelType.GuildText,
+    parent: community.setting("ticket_category_" + category + "_id") || undefined,
     topic: `Ticket #${number} | Owner: ${user.id}`,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -201,6 +205,12 @@ async function closeTicket(context) {
   if (!ticket || ticket.status !== "open") throw new Error("This channel is not an open ticket.");
   if (ticket.user_id !== context.user.id && !hasPermission(context.member, PermissionFlagsBits.ManageChannels)) {
     throw new Error("Only the ticket owner or staff can close this ticket.");
+  }
+  try {
+    await community.createTranscript(context.channel, ticket, context.guild, logAction);
+  } catch (error) {
+    console.error("Ticket transcript failed:", error);
+    logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
   }
   await context.channel.permissionOverwrites.edit(ticket.user_id, {
     SendMessages: false,
@@ -553,7 +563,117 @@ async function execute(context, name, data = {}) {
       logAction(guild.id, user.id, "clear", null, `Deleted ${deleted.size} messages`);
       break;
     }
-    case "ticket": return createTicket(context);
+    case "ticket": return createTicket(context, data.category ?? "support");
+    case "apply": {
+      const answers = data.answers;
+      if (!Array.isArray(answers) || answers.length !== 4) throw new Error("Usage: !تقديم age | timezone | experience | reason");
+      const id = await community.submitApplication(guild, user, answers, logAction);
+      await reply(context, "Your application #" + id + " has been submitted.");
+      break;
+    }
+    case "suggest":
+      return community.submitSuggestion(guild, user, data.content, logAction);
+    case "apply":
+      throw new Error("Use the /apply command to open the application form.");
+    case "welcome": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      if (!data.channel?.isTextBased()) throw new Error("Choose a valid welcome text channel.");
+      if (!data.message?.trim() || data.message.length > 1500) throw new Error("Welcome message must contain 1 to 1500 characters.");
+      community.setSetting("welcome_channel_id", data.channel.id);
+      community.setSetting("welcome_message", data.message);
+      logAction(guild.id, user.id, "welcome_config", data.channel.id, "Welcome message configured");
+      await reply(context, "Welcome messages configured.", false);
+      break;
+    }
+    case "autorole": {
+      requirePermission(member, PermissionFlagsBits.ManageRoles, "Manage Roles");
+      const role = data.role;
+      if (!role || role.managed || role.id === guild.id || role.position >= guild.members.me.roles.highest.position) throw new Error("Choose a normal role below the bot's highest role.");
+      community.setSetting("autorole_id", role.id);
+      logAction(guild.id, user.id, "autorole_config", role.id, role.name);
+      await reply(context, "Automatic role configured: **" + role.name + "**.", false);
+      break;
+    }
+    case "suggestions": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      if (!data.channel?.isTextBased()) throw new Error("Choose a valid suggestions text channel.");
+      community.setSetting("suggestion_channel_id", data.channel.id);
+      logAction(guild.id, user.id, "suggestions_config", data.channel.id, "Suggestions channel configured");
+      await reply(context, "Suggestions channel configured.", false);
+      break;
+    }
+    case "applications": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      if (!data.channel?.isTextBased()) throw new Error("Choose a valid applications text channel.");
+      community.setSetting("application_channel_id", data.channel.id);
+      logAction(guild.id, user.id, "applications_config", data.channel.id, "Applications channel configured");
+      await reply(context, "Applications channel configured.", false);
+      break;
+    }
+    case "ticketconfig": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      const entries = [
+        ["transcript_channel_id", data.transcriptChannel],
+        ["ticket_category_support_id", data.supportCategory],
+        ["ticket_category_complaint_id", data.complaintCategory],
+        ["ticket_category_partnership_id", data.partnershipCategory]
+      ];
+      for (const [key, value] of entries) if (value) community.setSetting(key, value.id);
+      logAction(guild.id, user.id, "ticket_config", null, entries.filter(x => x[1]).map(x => x[0]).join(", "));
+      await reply(context, "Ticket settings updated.", false);
+      break;
+    }
+    case "antiswear": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      const action = data.action;
+      const word = typeof data.word === "string" ? data.word.trim().toLocaleLowerCase("en-US") : "";
+      if (action === "list") {
+        const words = statements.getBlockedWords.all(guild.id).map(x => x.word);
+        await reply(context, words.length ? "Blocked words: " + words.join(", ") : "The blocked-word list is empty.");
+        break;
+      }
+      if (!word || word.length > 80 || /\s/.test(word)) throw new Error("Provide one word without spaces (maximum 80 characters).");
+      if (action === "add") {
+        statements.addBlockedWord.run(guild.id, word, user.id, Date.now());
+      } else if (action === "remove") {
+        if (!statements.removeBlockedWord.run(guild.id, word).changes) throw new Error("That word is not in the blocked list.");
+      } else throw new Error("Choose add, remove, or list.");
+      logAction(guild.id, user.id, "antiswear_" + action, null, word);
+      await reply(context, action === "add" ? "Added the word to the filter." : "Removed the word from the filter.", false);
+      break;
+    }
+    case "level": {
+      const target = data.target ?? user;
+      const row = statements.getLevel.get(guild.id, target.id);
+      const level = row?.level ?? 0;
+      const xp = row?.xp ?? 0;
+      const currentFloor = 100 * level * level;
+      const nextFloor = 100 * (level + 1) * (level + 1);
+      const progress = Math.max(0, xp - currentFloor);
+      await reply(context, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("Level: " + target.username)
+        .setDescription("**Level:** " + level + "\n**Total XP:** " + xp + "\n**Progress:** " + progress + " / " + (nextFloor - currentFloor))] });
+      break;
+    }
+    case "leaderboard": {
+      const rows = statements.getLeaderboard.all(guild.id);
+      const description = rows.length ? rows.map((row, index) => "**" + (index + 1) + ".** <@" + row.user_id + "> — Level " + row.level + " (" + row.xp + " XP)").join("\n") : "No level data yet.";
+      await reply(context, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("XP Leaderboard").setDescription(description)] });
+      break;
+    }
+    case "invites": {
+      const target = data.target ?? user;
+      const count = statements.getInvites.get(guild.id, target.id)?.uses ?? 0;
+      await reply(context, "<@" + target.id + "> has **" + count + "** tracked invite(s).");
+      break;
+    }
+    case "achievements": {
+      const target = data.target ?? user;
+      const rows = statements.getAchievements.all(guild.id, target.id);
+      const labels = { first_message: "First message", one_hundred_messages: "100 messages", level_five: "Reach level 5", five_invites: "Invite 5 members" };
+      const description = rows.length ? rows.map(row => "🏆 " + (labels[row.achievement_key] ?? row.achievement_key) + " — <t:" + Math.floor(row.unlocked_at / 1000) + ":d>").join("\n") : "No achievements unlocked yet.";
+      await reply(context, { embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle("Achievements: " + target.username).setDescription(description)] });
+      break;
+    }
     case "close": return closeTicket(context);
     case "reopen": return reopenTicket(context);
     case "delete": return deleteTicket(context);
@@ -790,6 +910,36 @@ async function handlePrefix(message) {
         data.message = data.role ? raw.replace("<@&" + data.role.id + ">", "").trim() : raw;
         break;
       }
+      case "suggest":
+        data.content = raw;
+        break;
+      case "apply":
+        data.answers = raw.split("|").map(x => x.trim());
+        break;
+      case "welcome": {
+        requirePermission(message.member, PermissionFlagsBits.ManageGuild, "Manage Server");
+        data.channel = message.mentions.channels.first();
+        data.message = raw.replace(/<#[0-9]{17,20}>/, "").trim();
+        break;
+      }
+      case "autorole":
+        data.role = message.mentions.roles.first();
+        break;
+      case "suggestions": case "applications":
+        data.channel = message.mentions.channels.first();
+        break;
+      case "ticketconfig":
+        data.transcriptChannel = message.mentions.channels.first();
+        break;
+      case "antiswear": {
+        const [action, word] = args;
+        data.action = ({ "إضافة": "add", "اضافة": "add", "إزالة": "remove", "ازالة": "remove", "عرض": "list" })[action] ?? action;
+        data.word = word;
+        break;
+      }
+      case "level": case "invites": case "achievements":
+        data.target = args.length ? await target() : user;
+        break;
       case "reminder":
         data.duration = args[0];
         data.message = args.slice(1).join(" ");
@@ -816,6 +966,7 @@ client.once("ready", async () => {
   } catch (error) {
     console.error("Failed to register guild slash commands:", error);
   }
+  await community.cacheInvites(await client.guilds.fetch(GUILD_ID).then(g => g.fetch()).catch(() => client.guilds.cache.get(GUILD_ID)));
   client.user.setPresence({
     status: PresenceUpdateStatus.DoNotDisturb,
     activities: [{ name: "𝓐𝓵𝓲 𝓐𝓵𝓰𝓱𝓪𝓶𝓭𝓲", type: ActivityType.Watching }]
@@ -829,7 +980,14 @@ client.once("ready", async () => {
   }
 });
 
-client.on("messageCreate", handlePrefix);
+client.on("messageCreate", async message => {
+  await community.handleMessage(message, logAction).catch(error => console.error("Community message handler failed:", error));
+  await handlePrefix(message);
+});
+client.on("guildMemberAdd", member => {
+  if (member.guild.id === GUILD_ID) community.handleMemberAdd(member, logAction).catch(error => console.error("Member join handler failed:", error));
+});
+client.on("inviteCreate", invite => community.handleInviteCreate(invite).catch(error => console.error("Invite cache update failed:", error)));
 
 client.on("channelDelete", channel => {
   const ticket = getTicket(channel.id);
@@ -840,6 +998,12 @@ client.on("channelDelete", channel => {
 
 client.on("interactionCreate", async interaction => {
   try {
+    if (await community.handleInteraction(interaction, logAction)) return;
+    if (interaction.isChatInputCommand() && interaction.commandName === "apply") {
+      if (!interaction.guild || interaction.guild.id !== GUILD_ID) return interaction.reply({ content: "This bot is configured for one server only.", ephemeral: true });
+      await community.openApplication(interaction);
+      return;
+    }
     if (interaction.isButton() && interaction.customId.startsWith("giveaway:enter:")) {
       if (!interaction.guild || interaction.guild.id !== GUILD_ID) return;
       const id = Number(interaction.customId.split(":")[2]);
@@ -892,6 +1056,25 @@ client.on("interactionCreate", async interaction => {
       data.duration = interaction.options.getString("duration");
       data.message = interaction.options.getString("message");
     }
+    if (name === "ticket") data.category = interaction.options.getString("category") ?? "support";
+    if (name === "welcome") {
+      data.channel = interaction.options.getChannel("channel");
+      data.message = interaction.options.getString("message");
+    }
+    if (name === "autorole") data.role = interaction.options.getRole("role");
+    if (["suggestions", "applications"].includes(name)) data.channel = interaction.options.getChannel("channel");
+    if (name === "suggest") data.content = interaction.options.getString("content");
+    if (name === "ticketconfig") {
+      data.transcriptChannel = interaction.options.getChannel("transcriptchannel");
+      data.supportCategory = interaction.options.getChannel("supportcategory");
+      data.complaintCategory = interaction.options.getChannel("complaintcategory");
+      data.partnershipCategory = interaction.options.getChannel("partnershipcategory");
+    }
+    if (name === "antiswear") {
+      data.action = interaction.options.getString("action");
+      data.word = interaction.options.getString("word");
+    }
+    if (["level", "invites", "achievements"].includes(name)) data.target = interaction.options.getUser("user") ?? interaction.user;
 
     const context = {
       guild: interaction.guild,
