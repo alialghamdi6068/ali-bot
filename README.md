@@ -26,10 +26,10 @@ Slash commands are registered automatically to the configured server after the b
 
 Slash commands use English names without underscores. Prefix commands use `!` and Arabic names; the prefix is fixed in code.
 
-- Moderation: `/ban`, `/unban`, `/kick`, `/timeout`, `/untimeout`, `/warn`, `/warnings`, `/clearwarn`, `/clear`
+- Moderation: `/ban`, `/unban`, `/kick`, `/timeout`, `/untimeout`, `/warn`, `/warnings`, `/clearwarn`, `/clear`, `/purge`
 - Tickets: `/ticket`, `/close`, `/reopen`, `/delete`, `/add`, `/remove`, `/claim`
 - Giveaways: `/giveaway`, `/giveawaylist`, `/endgiveaway`, `/reroll`
-- Utility: `/say`, `/dm`, `/role`, `/removerole`, `/help`, `/userinfo`, `/serverinfo`, `/ping`, `/logs`
+- Utility: `/say`, `/dm`, `/role`, `/removerole`, `/help`, `/commands`, `/userinfo`, `/serverinfo`, `/ping`, `/logs`
 - Server tools: `/maintenance`, `/lock`, `/unlock`, `/slowmode`, `/announce`, `/notify`, `/reminder`
 - Community: `/welcome`, `/autorole`, `/suggestions`, `/suggest`, `/suggestionreview`, `/applications`, `/apply`, `/ticketconfig`, `/antiswear`, `/level`, `/leaderboard`, `/invites`, `/achievements`
 
@@ -38,6 +38,7 @@ Equivalent Arabic prefix commands are shown by `!مساعدة` and `/help`.
 Examples:
 - `!صيانة تشغيل Scheduled maintenance`
 - `!قفل الروم` / `!فتح الروم`
+- `!تنظيف 25` / `!أوامر`
 - `!بطء 10`
 - `!اعلان Server update`
 - `!تنبيه @role Please check the update`
