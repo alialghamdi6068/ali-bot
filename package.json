@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "check": "node --check src/index.js && node --check src/database.js && node --check src/commands.js && node --check src/utils.js",
+    "check": "node --check src/index.js && node --check src/database.js && node --check src/commands.js && node --check src/utils.js && node --check src/community.js",
     "test": "node --test"
   },
   "engines": {
