@@ -605,6 +605,25 @@ async function execute(context, name, data = {}) {
     }
     case "suggest":
       return community.submitSuggestion(guild, user, data.content, logAction);
+    case "suggestionreview": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      const suggestion = statements.getSuggestionChannel.get(data.suggestionId, guild.id);
+      if (!suggestion) throw new Error("Suggestion not found.");
+      if (!["considering", "approved", "rejected"].includes(data.status)) throw new Error("Choose considering, approved, or rejected.");
+      const targetChannel = await guild.channels.fetch(suggestion.channel_id).catch(() => null);
+      if (!targetChannel?.isTextBased() || !suggestion.message_id) throw new Error("The suggestion message is unavailable.");
+      const targetMessage = await targetChannel.messages.fetch(suggestion.message_id).catch(() => null);
+      if (!targetMessage?.embeds?.[0]) throw new Error("The suggestion message is unavailable.");
+      const colors = { considering: 0xf1c40f, approved: 0x2ecc71, rejected: 0xe74c3c };
+      const oldEmbed = targetMessage.embeds[0];
+      const fields = oldEmbed.fields.filter(field => field.name !== "Status");
+      fields.unshift({ name: "Status", value: data.status.toUpperCase(), inline: true });
+      await targetMessage.edit({ embeds: [EmbedBuilder.from(oldEmbed).setColor(colors[data.status]).setFields(fields)] });
+      statements.updateSuggestionStatus.run(data.status, data.suggestionId, guild.id);
+      logAction(guild.id, user.id, "suggestion_" + data.status, String(data.suggestionId), "Suggestion reviewed");
+      await reply(context, "Suggestion #" + data.suggestionId + " marked as " + data.status + ".", false);
+      break;
+    }
     case "welcome": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       if (!data.channel?.isTextBased()) throw new Error("Choose a valid welcome text channel.");
@@ -648,6 +667,11 @@ async function execute(context, name, data = {}) {
         ["ticket_category_complaint_id", data.complaintCategory],
         ["ticket_category_partnership_id", data.partnershipCategory]
       ];
+      if (!entries.some(entry => entry[1])) throw new Error("Choose at least one transcript or ticket category channel.");
+      if (data.transcriptChannel && !data.transcriptChannel.isTextBased()) throw new Error("Transcript destination must be a text channel.");
+      for (const [key, value] of entries.slice(1)) {
+        if (value && value.type !== ChannelType.GuildCategory) throw new Error("Ticket parents must be category channels.");
+      }
       for (const [key, value] of entries) if (value) community.setSetting(key, value.id);
       logAction(guild.id, user.id, "ticket_config", null, entries.filter(x => x[1]).map(x => x[0]).join(", "));
       await reply(context, "Ticket settings updated.", false);
@@ -950,6 +974,11 @@ async function handlePrefix(message) {
       case "suggest":
         data.content = raw;
         break;
+      case "suggestionreview":
+        data.suggestionId = Number(args[0]);
+        data.status = args[1];
+        if (!Number.isInteger(data.suggestionId)) throw new Error("Usage: !مراجعة اقتراح 12 approved");
+        break;
       case "apply":
         data.answers = raw.split("|").map(x => x.trim());
         break;
@@ -1108,6 +1137,10 @@ client.on("interactionCreate", async interaction => {
     if (name === "autorole") data.role = interaction.options.getRole("role");
     if (["suggestions", "applications"].includes(name)) data.channel = interaction.options.getChannel("channel");
     if (name === "suggest") data.content = interaction.options.getString("content");
+    if (name === "suggestionreview") {
+      data.suggestionId = interaction.options.getInteger("id");
+      data.status = interaction.options.getString("status");
+    }
     if (name === "ticketconfig") {
       data.transcriptChannel = interaction.options.getChannel("transcriptchannel");
       data.supportCategory = interaction.options.getChannel("supportcategory");
