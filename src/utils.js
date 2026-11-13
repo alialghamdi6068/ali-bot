@@ -38,13 +38,26 @@ const PREFIX_COMMANDS = [
   ["قفل الروم", "lock"],
   ["فتح", "unlock"],
   ["فتح الروم", "unlock"],
-  ["فتح", "unlock"],
   ["بطء", "slowmode"],
   ["اعلان", "announce"],
   ["إعلان", "announce"],
   ["تنبيه", "notify"],
   ["تذكير", "reminder"],
-    ["لوق", "logs"]
+  ["قناة ترحيب", "welcome"],
+  ["رتبة تلقائية", "autorole"],
+  ["قناة اقتراحات", "suggestions"],
+  ["اقتراح", "suggest"],
+  ["قناة تقديمات", "applications"],
+  ["تقديم", "apply"],
+  ["اعداد التكت", "ticketconfig"],
+  ["إعداد التكت", "ticketconfig"],
+  ["فلترة كلمات", "antiswear"],
+  ["مستوى", "level"],
+  ["المتصدرين", "leaderboard"],
+  ["دعوات", "invites"],
+  ["انجازات", "achievements"],
+  ["إنجازات", "achievements"],
+  ["لوق", "logs"]
 ].sort((a, b) => b[0].length - a[0].length);
 
 function resolvePrefixCommand(input) {
