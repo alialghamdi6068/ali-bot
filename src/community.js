@@ -94,12 +94,16 @@ async function handleMessage(message, logAction) {
     return;
   }
 
+  const counted = statements.recordMessage.get(message.guild.id, message.author.id);
   const previous = statements.getLevel.get(message.guild.id, message.author.id);
-  if (previous && Date.now() - previous.last_xp_at < 60_000) return;
+  if (previous && Date.now() - previous.last_xp_at < 60_000) {
+    checkAchievements(message.guild.id, message.author.id, counted, logAction);
+    return;
+  }
   const row = statements.addXp.get(message.guild.id, message.author.id, randomInt(10, 21), Date.now());
   const level = Math.floor(Math.sqrt(row.xp / 100));
   if (level !== row.level) statements.setLevel.run(level, message.guild.id, message.author.id);
-  checkAchievements(message.guild.id, message.author.id, { ...row, level }, logAction);
+  checkAchievements(message.guild.id, message.author.id, { ...row, messages: counted.messages, level }, logAction);
 }
 
 async function submitSuggestion(guild, user, content, logAction) {
