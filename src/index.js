@@ -813,7 +813,7 @@ async function execute(context, name, data = {}) {
         "**Giveaways**",
         "`/giveaway` • `/giveawaylist` • `/endgiveaway` • `/reroll`",
         "**Other**",
-        "`/say` • `/dm` • `/role` • `/removerole` • `/userinfo` • `/serverinfo` • `/ping` • `/logs`",
+        "`/say` • `/dm` • `/role` • `/removerole` • `/userinfo` • `/serverinfo` • `/ping` • `/logs` • `/help` • `/commands",
         "**Server tools**",
         "`/maintenance` • `/lock` • `/unlock` • `/slowmode` • `/announce` • `/notify` • `/reminder`",
         "**Community**",
