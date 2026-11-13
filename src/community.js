@@ -66,6 +66,7 @@ async function handleMemberAdd(member, logAction) {
       statements.addInvite.run(member.guild.id, used.inviter.id);
       const total = statements.getInvites.get(member.guild.id, used.inviter.id)?.uses ?? 0;
       if (total >= 5) unlock(member.guild.id, used.inviter.id, "five_invites", logAction);
+      if (total >= 10) unlock(member.guild.id, used.inviter.id, "ten_invites", logAction);
       logAction(member.guild.id, used.inviter.id, "invite_used", member.id, "Invite " + used.code);
     }
   } catch (error) {
@@ -76,7 +77,9 @@ async function handleMemberAdd(member, logAction) {
 function checkAchievements(guildId, userId, row, logAction) {
   if (row.messages >= 1) unlock(guildId, userId, "first_message", logAction);
   if (row.messages >= 100) unlock(guildId, userId, "one_hundred_messages", logAction);
+  if (row.messages >= 500) unlock(guildId, userId, "five_hundred_messages", logAction);
   if (row.level >= 5) unlock(guildId, userId, "level_five", logAction);
+  if (row.level >= 10) unlock(guildId, userId, "level_ten", logAction);
 }
 
 async function handleMessage(message, logAction) {
