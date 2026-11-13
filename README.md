@@ -63,7 +63,7 @@ Examples:
 
 SQLite uses WAL mode, foreign keys, and a busy timeout. Ticket numbering, ticket records, warnings, giveaway entries and states, maintenance settings, reminders, suggestions, applications, levels, invite counts, achievements, blocked words, transcripts, and action logs survive restarts. Reminder delivery is restored after restarts. Every non-bot message is counted for achievements; XP is awarded at most once per user every 60 seconds. Level-up announcements are posted automatically. Anti-swear removes matching messages and attempts a 15-minute timeout; bot permissions and role hierarchy still apply. Ticket transcripts include the latest 100 messages. Keep the `data/` directory on persistent storage and include it in your own backup policy.
 
-## Community setup\n\nConfigure welcome, autorole, suggestions, applications, ticket category parents, and transcript delivery using the corresponding slash commands. Invite tracking requires Manage Server permission and can only attribute joins when the bot can compare invite usage.\n\n## Presence
+## Community setup\n\nConfigure welcome, autorole, suggestions, applications, ticket category parents, and transcript delivery using the corresponding slash commands. Invite tracking requires Manage Server permission and can only attribute joins when the bot can compare invite usage. The word filter records a warning, deletes the message, attempts a 15-minute timeout, and sends a DM. Staff can review suggestions with `/suggestionreview` or `!مراجعة اقتراح`.\n\n## Presence
 
 The bot starts in Do Not Disturb and displays `Watching 𝓐𝓵𝓲 𝓐𝓵𝓰𝓱𝓪𝓶𝓭𝓲`.
 
