@@ -800,13 +800,13 @@ async function execute(context, name, data = {}) {
         "**Server tools**",
         "`/maintenance` • `/lock` • `/unlock` • `/slowmode` • `/announce` • `/notify` • `/reminder`",
         "**Community**",
-        "`/welcome` • `/autorole` • `/suggestions` • `/suggest` • `/applications` • `/apply` • `/ticketconfig` • `/antiswear` • `/level` • `/leaderboard` • `/invites` • `/achievements`",
+        "`/welcome` • `/autorole` • `/suggestions` • `/suggest` • `/suggestionreview` • `/applications` • `/apply` • `/ticketconfig` • `/antiswear` • `/level` • `/leaderboard` • `/invites` • `/achievements`",
         "**Arabic prefix**",
         "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح`",
         "`!تكت` • `!إغلاق تكت` • `!فتح تكت` • `!حذف تكت` • `!إضافة عضو` • `!إزالة عضو` • `!استلام تكت`",
         "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة`",
         "`!صيانة` • `!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!تذكير`",
-        "`!قناة ترحيب` • `!رتبة تلقائية` • `!قناة اقتراحات` • `!اقتراح` • `!قناة تقديمات` • `!تقديم` • `!إعداد التكت` • `!فلترة كلمات`",
+        "`!قناة ترحيب` • `!رتبة تلقائية` • `!قناة اقتراحات` • `!اقتراح` • `!مراجعة اقتراح` • `!قناة تقديمات` • `!تقديم` • `!إعداد التكت` • `!فلترة كلمات`",
         "`!مستوى` • `!المتصدرين` • `!دعوات` • `!إنجازات`"
       ].join("\n"));
       await reply(context, { embeds: [embed] });
