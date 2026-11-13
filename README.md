@@ -31,7 +31,7 @@ Slash commands use English names without underscores. Prefix commands use `!` an
 - Giveaways: `/giveaway`, `/giveawaylist`, `/endgiveaway`, `/reroll`
 - Utility: `/say`, `/dm`, `/role`, `/removerole`, `/help`, `/userinfo`, `/serverinfo`, `/ping`, `/logs`
 - Server tools: `/maintenance`, `/lock`, `/unlock`, `/slowmode`, `/announce`, `/notify`, `/reminder`
-- Community: `/welcome`, `/autorole`, `/suggestions`, `/suggest`, `/applications`, `/apply`, `/ticketconfig`, `/antiswear`, `/level`, `/leaderboard`, `/invites`, `/achievements`
+- Community: `/welcome`, `/autorole`, `/suggestions`, `/suggest`, `/suggestionreview`, `/applications`, `/apply`, `/ticketconfig`, `/antiswear`, `/level`, `/leaderboard`, `/invites`, `/achievements`
 
 Equivalent Arabic prefix commands are shown by `!مساعدة` and `/help`.
 
@@ -46,6 +46,7 @@ Examples:
 - `!رتبة تلقائية @Member`
 - `!قناة اقتراحات #suggestions`
 - `!اقتراح Add a new game night`
+- `!مراجعة اقتراح 12 approved`
 - `!قناة تقديمات #applications`
 - `!تقديم age | timezone | experience | reason`
 - `!إعداد التكت #transcripts`
@@ -60,7 +61,7 @@ Examples:
 
 ## Persistence
 
-SQLite uses WAL mode, foreign keys, and a busy timeout. Ticket numbering, ticket records, warnings, giveaway entries and states, maintenance settings, reminders, suggestions, applications, levels, invite counts, achievements, blocked words, transcripts, and action logs survive restarts. Reminder delivery is restored after restarts. XP awards use a 60-second per-user cooldown. Anti-swear removes matching messages and attempts a 15-minute timeout; bot permissions and role hierarchy still apply. Ticket transcripts include the latest 100 messages. Keep the `data/` directory on persistent storage and include it in your own backup policy.
+SQLite uses WAL mode, foreign keys, and a busy timeout. Ticket numbering, ticket records, warnings, giveaway entries and states, maintenance settings, reminders, suggestions, applications, levels, invite counts, achievements, blocked words, transcripts, and action logs survive restarts. Reminder delivery is restored after restarts. Every non-bot message is counted for achievements; XP is awarded at most once per user every 60 seconds. Level-up announcements are posted automatically. Anti-swear removes matching messages and attempts a 15-minute timeout; bot permissions and role hierarchy still apply. Ticket transcripts include the latest 100 messages. Keep the `data/` directory on persistent storage and include it in your own backup policy.
 
 ## Community setup\n\nConfigure welcome, autorole, suggestions, applications, ticket category parents, and transcript delivery using the corresponding slash commands. Invite tracking requires Manage Server permission and can only attribute joins when the bot can compare invite usage.\n\n## Presence
 
