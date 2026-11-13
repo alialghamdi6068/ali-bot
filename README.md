@@ -17,7 +17,7 @@ A personal, single-server Discord management bot built with Node.js, Discord.js,
    - `GUILD_ID`: the one Discord server the bot is allowed to operate in.
 4. In the Discord Developer Portal, enable **Message Content Intent** and **Server Members Intent** (Guild Members). They are required for Arabic `!` prefix commands, welcome messages, automatic roles, and member join tracking.
 5. Invite the bot to the configured server with the `bot` and `applications.commands` OAuth scopes.
-6. Give its role the permissions required by the features you intend to use: View Channels, Send Messages, Read Message History, Embed Links, Attach Files, Manage Channels, Manage Messages, Manage Roles, Ban Members, Kick Members, Moderate Members, and (if you want live @everyone/@here notifications) Mention Everyone. Keep the bot role above roles it must assign or moderate. Users who run `/logs` must themselves have View Audit Log, and **Manage Server** for invite tracking.
+6. Give its role the permissions required by the features you intend to use: View Channels, Send Messages, Read Message History, Embed Links, Attach Files, Manage Channels, Manage Messages, Manage Roles, Ban Members, Kick Members, Moderate Members, and (if you want live @everyone/@here notifications) Mention Everyone. Keep the bot role above roles it must assign or moderate. Users who run `/logs` need View Audit Log. The bot role needs **Manage Server** to track invite usage.
 7. Start it with `npm start`.
 
 Slash commands are registered automatically to the configured server after the bot becomes ready. The bot does not register global commands.
