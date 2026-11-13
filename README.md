@@ -15,9 +15,9 @@ A personal, single-server Discord management bot built with Node.js, Discord.js,
 3. Set only these two values:
    - `DISCORD_TOKEN`: the bot token. Keep it secret.
    - `GUILD_ID`: the one Discord server the bot is allowed to operate in.
-4. In the Discord Developer Portal, enable **Message Content Intent**. It is required for Arabic `!` prefix commands. The bot does not request the Guild Members privileged intent.
+4. In the Discord Developer Portal, enable **Message Content Intent** and **Server Members Intent** (Guild Members). They are required for Arabic `!` prefix commands, welcome messages, automatic roles, and member join tracking.
 5. Invite the bot to the configured server with the `bot` and `applications.commands` OAuth scopes.
-6. Give its role the permissions required by the features you intend to use: View Channels, Send Messages, Read Message History, Embed Links, Attach Files, Manage Channels, Manage Messages, Manage Roles, Ban Members, Kick Members, Moderate Members, and (if you want live @everyone/@here notifications) Mention Everyone. Keep the bot role above roles it must assign or moderate. Users who run `/logs` must themselves have View Audit Log.
+6. Give its role the permissions required by the features you intend to use: View Channels, Send Messages, Read Message History, Embed Links, Attach Files, Manage Channels, Manage Messages, Manage Roles, Ban Members, Kick Members, Moderate Members, and (if you want live @everyone/@here notifications) Mention Everyone. Keep the bot role above roles it must assign or moderate. Users who run `/logs` must themselves have View Audit Log, and **Manage Server** for invite tracking.
 7. Start it with `npm start`.
 
 Slash commands are registered automatically to the configured server after the bot becomes ready. The bot does not register global commands.
@@ -31,6 +31,7 @@ Slash commands use English names without underscores. Prefix commands use `!` an
 - Giveaways: `/giveaway`, `/giveawaylist`, `/endgiveaway`, `/reroll`
 - Utility: `/say`, `/dm`, `/role`, `/removerole`, `/help`, `/userinfo`, `/serverinfo`, `/ping`, `/logs`
 - Server tools: `/maintenance`, `/lock`, `/unlock`, `/slowmode`, `/announce`, `/notify`, `/reminder`
+- Community: `/welcome`, `/autorole`, `/suggestions`, `/suggest`, `/applications`, `/apply`, `/ticketconfig`, `/antiswear`, `/level`, `/leaderboard`, `/invites`, `/achievements`
 
 Equivalent Arabic prefix commands are shown by `!مساعدة` and `/help`.
 
@@ -41,6 +42,15 @@ Examples:
 - `!اعلان Server update`
 - `!تنبيه @role Please check the update`
 - `!تذكير 30m Check the support ticket`
+- `!قناة ترحيب #welcome Welcome {user} to {server}!`
+- `!رتبة تلقائية @Member`
+- `!قناة اقتراحات #suggestions`
+- `!اقتراح Add a new game night`
+- `!قناة تقديمات #applications`
+- `!تقديم age | timezone | experience | reason`
+- `!إعداد التكت #transcripts`
+- `!فلترة كلمات إضافة blockedword`
+- `!مستوى` / `!المتصدرين` / `!دعوات` / `!إنجازات`
 - `!حظر @member reason`
 - `!تايم @member 10m reason`
 - `!تحذير @member reason`
@@ -50,9 +60,9 @@ Examples:
 
 ## Persistence
 
-SQLite uses WAL mode, foreign keys, and a busy timeout. Ticket numbering, ticket records, warnings, giveaway entries and states, maintenance settings, reminders, and action logs survive restarts. Reminder delivery is restored after restarts. Keep the `data/` directory on persistent storage and include it in your own backup policy.
+SQLite uses WAL mode, foreign keys, and a busy timeout. Ticket numbering, ticket records, warnings, giveaway entries and states, maintenance settings, reminders, suggestions, applications, levels, invite counts, achievements, blocked words, transcripts, and action logs survive restarts. Reminder delivery is restored after restarts. XP awards use a 60-second per-user cooldown. Anti-swear removes matching messages and attempts a 15-minute timeout; bot permissions and role hierarchy still apply. Ticket transcripts include the latest 100 messages. Keep the `data/` directory on persistent storage and include it in your own backup policy.
 
-## Presence
+## Community setup\n\nConfigure welcome, autorole, suggestions, applications, ticket category parents, and transcript delivery using the corresponding slash commands. Invite tracking requires Manage Server permission and can only attribute joins when the bot can compare invite usage.\n\n## Presence
 
 The bot starts in Do Not Disturb and displays `Watching 𝓐𝓵𝓲 𝓐𝓵𝓰𝓱𝓪𝓶𝓭𝓲`.
 
