@@ -36,7 +36,7 @@ async function handleMemberAdd(member, logAction) {
   const roleId = setting("autorole_id");
   if (roleId) {
     const role = await member.guild.roles.fetch(roleId).catch(() => null);
-    if (role && !role.managed && role.id !== member.guild.id && role.position < member.guild.members.me.roles.highest.position) {
+    if (role && !role.managed && role.id !== member.guild.id && role.position < (member.guild.members.me?.roles.highest.position ?? -1)) {
       await member.roles.add(role, "Configured automatic member role").catch(error => {
         console.error("Auto-role assignment failed:", error);
         logAction(member.guild.id, member.client.user.id, "autorole_failed", member.id, error.message);
@@ -82,7 +82,7 @@ function checkAchievements(guildId, userId, row, logAction) {
 async function handleMessage(message, logAction) {
   if (!message.guild || message.guild.id !== process.env.GUILD_ID || message.author.bot) return;
   const blocked = statements.getBlockedWords.all(message.guild.id).map(x => x.word.toLocaleLowerCase("en-US"));
-  const tokens = message.content.toLocaleLowerCase("en-US").split(/[^\\p{L}\\p{N}]+/u);
+  const tokens = message.content.toLocaleLowerCase("en-US").split(/[^\p{L}\p{N}]+/u);
   const match = blocked.find(word => word && tokens.includes(word));
   if (match) {
     await message.delete().catch(() => {});
@@ -117,8 +117,13 @@ async function submitSuggestion(guild, user, content, logAction) {
     new ButtonBuilder().setCustomId("suggestion:up:" + id).setLabel("👍 0").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("suggestion:down:" + id).setLabel("👎 0").setStyle(ButtonStyle.Danger)
   );
-  const sent = await channel.send({ embeds: [embed], components: [row], allowedMentions: { users: [user.id] } });
-  statements.setSuggestionMessage.run(sent.id, id);
+  try {
+    const sent = await channel.send({ embeds: [embed], components: [row], allowedMentions: { users: [user.id] } });
+    statements.setSuggestionMessage.run(sent.id, id);
+  } catch (error) {
+    statements.deleteSuggestion.run(id);
+    throw error;
+  }
   logAction(guild.id, user.id, "suggestion_create", String(id), content.trim().slice(0, 300));
   return id;
 }
@@ -128,10 +133,10 @@ async function submitApplication(guild, user, answers, logAction) {
   if (!channelId) throw new Error("Applications are not configured. Ask staff to set the applications channel.");
   const clean = answers.map(x => String(x ?? "").trim());
   if (clean.length !== 4 || clean.some(x => !x || x.length > 1000)) throw new Error("All four application answers are required (maximum 1000 characters each).");
-  const result = statements.createApplication.run(guild.id, user.id, JSON.stringify(clean), Date.now());
-  const id = Number(result.lastInsertRowid);
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased()) throw new Error("The configured applications channel is unavailable.");
+  const result = statements.createApplication.run(guild.id, user.id, JSON.stringify(clean), Date.now());
+  const id = Number(result.lastInsertRowid);
   const embed = new EmbedBuilder().setColor(0x9b59b6).setTitle("Staff Application #" + id)
     .setDescription(clean.map((answer, i) => "**Question " + (i + 1) + "**\n" + answer).join("\n\n"))
     .addFields({ name: "Applicant", value: "<@" + user.id + ">", inline: true }, { name: "Status", value: "Pending", inline: true }).setTimestamp();
