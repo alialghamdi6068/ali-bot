@@ -26,6 +26,8 @@ const commands = [
     .addIntegerOption(o => o.setName("warningid").setDescription("Warning number").setRequired(true)),
   new SlashCommandBuilder().setName("clear").setDescription("Delete recent messages")
     .addIntegerOption(o => o.setName("amount").setDescription("1 to 100").setMinValue(1).setMaxValue(100).setRequired(true)),
+  new SlashCommandBuilder().setName("purge").setDescription("Purge recent messages")
+    .addIntegerOption(o => o.setName("amount").setDescription("1 to 100").setMinValue(1).setMaxValue(100).setRequired(true)),
   new SlashCommandBuilder().setName("ticket").setDescription("Create a support ticket")
     .addStringOption(o => o.setName("category").setDescription("Ticket category").addChoices(
       { name: "Support", value: "support" },
@@ -62,6 +64,7 @@ const commands = [
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
     .addRoleOption(o => o.setName("role").setDescription("Role to remove").setRequired(true)),
   new SlashCommandBuilder().setName("help").setDescription("Show all bot commands"),
+  new SlashCommandBuilder().setName("commands").setDescription("List all bot commands"),
   new SlashCommandBuilder().setName("userinfo").setDescription("Show member information")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
   new SlashCommandBuilder().setName("serverinfo").setDescription("Show server information"),
