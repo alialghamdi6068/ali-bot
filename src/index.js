@@ -207,19 +207,45 @@ async function closeTicket(context) {
   if (ticket.user_id !== context.user.id && !hasPermission(context.member, PermissionFlagsBits.ManageChannels)) {
     throw new Error("Only the ticket owner or staff can close this ticket.");
   }
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("ticket:close:confirm:" + context.channel.id + ":" + context.user.id).setLabel("Confirm close").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("ticket:close:cancel:" + context.channel.id + ":" + context.user.id).setLabel("Cancel").setStyle(ButtonStyle.Secondary)
+  );
+  await reply(context, { content: "Are you sure you want to close ticket #" + ticket.number + "?", components: [row] });
+}
+
+async function handleTicketInteraction(interaction) {
+  if (!interaction.isButton() || !interaction.customId.startsWith("ticket:close:")) return false;
+  const parts = interaction.customId.split(":");
+  const action = parts[2];
+  const channelId = parts[3];
+  const requesterId = parts[4];
+  if (!interaction.guild || interaction.guild.id !== GUILD_ID || !["confirm", "cancel"].includes(action)) return false;
+  if (interaction.user.id !== requesterId && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+    await interaction.reply({ content: "Only the person who requested closure or ticket staff can use these buttons.", ephemeral: true });
+    return true;
+  }
+  if (action === "cancel") {
+    await interaction.update({ content: "Ticket closure cancelled.", components: [] });
+    return true;
+  }
+  const ticket = getTicket(channelId);
+  const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+  if (!ticket || ticket.status !== "open" || !channel) {
+    await interaction.update({ content: "This ticket is no longer open.", components: [] });
+    return true;
+  }
   try {
-    await community.createTranscript(context.channel, ticket, context.guild, logAction);
+    await community.createTranscript(channel, ticket, interaction.guild, logAction);
   } catch (error) {
     console.error("Ticket transcript failed:", error);
-    logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
+    logAction(interaction.guild.id, interaction.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
   }
-  await context.channel.permissionOverwrites.edit(ticket.user_id, {
-    SendMessages: false,
-    AttachFiles: false
-  });
-  statements.updateTicketStatus.run("closed", Date.now(), context.channel.id);
-  logAction(context.guild.id, context.user.id, "ticket_close", ticket.user_id, `Ticket #${ticket.number}`);
-  await reply(context, `Ticket #${ticket.number} has been closed.`, false);
+  await channel.permissionOverwrites.edit(ticket.user_id, { SendMessages: false, AttachFiles: false });
+  statements.updateTicketStatus.run("closed", Date.now(), channelId);
+  logAction(interaction.guild.id, interaction.user.id, "ticket_close", ticket.user_id, "Ticket #" + ticket.number);
+  await interaction.update({ content: "Ticket #" + ticket.number + " has been closed. Transcript processing completed.", components: [] });
+  return true;
 }
 
 async function reopenTicket(context) {
@@ -243,6 +269,11 @@ async function deleteTicket(context) {
   const ticket = getTicket(context.channel.id);
   if (!ticket) throw new Error("This channel is not a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
+  try {
+    await community.createTranscript(context.channel, ticket, context.guild, logAction);
+  } catch (error) {
+    logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
+  }
   await context.channel.delete(`Ticket #${ticket.number} deleted by ${context.user.tag}`);
   statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
   logAction(context.guild.id, context.user.id, "ticket_delete", ticket.user_id, `Ticket #${ticket.number}`);
@@ -1010,6 +1041,7 @@ client.on("channelDelete", channel => {
 
 client.on("interactionCreate", async interaction => {
   try {
+    if (await handleTicketInteraction(interaction)) return;
     if (await community.handleInteraction(interaction, logAction)) return;
     if (interaction.isChatInputCommand() && interaction.commandName === "apply") {
       if (!interaction.guild || interaction.guild.id !== GUILD_ID) return interaction.reply({ content: "This bot is configured for one server only.", ephemeral: true });
