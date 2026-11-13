@@ -55,3 +55,33 @@ test("failed giveaway setup can be rolled back without leaving entries", () => {
   assert.equal(statements.getGiveaway.get(giveawayId, guildId), undefined);
   assert.deepEqual(statements.getGiveawayEntries.all(giveawayId), []);
 });
+
+test("community data is persisted and deduplicated", () => {
+  const guildId = "community-" + Date.now();
+  const userId = "823456789012345678";
+  const xp = statements.addXp.get(guildId, userId, 25, Date.now());
+  assert.equal(xp.xp, 25);
+  assert.equal(xp.messages, 1);
+  assert.equal(statements.addXp.get(guildId, userId, 30, Date.now()).xp, 55);
+
+  assert.equal(statements.unlockAchievement.run(guildId, userId, "first_message", Date.now()).changes, 1);
+  assert.equal(statements.unlockAchievement.run(guildId, userId, "first_message", Date.now()).changes, 0);
+  assert.equal(statements.getAchievements.all(guildId, userId).length, 1);
+
+  statements.addBlockedWord.run(guildId, "badword", userId, Date.now());
+  assert.deepEqual(statements.getBlockedWords.all(guildId).map(row => row.word), ["badword"]);
+  assert.equal(statements.removeBlockedWord.run(guildId, "badword").changes, 1);
+
+  const application = statements.createApplication.run(guildId, userId, JSON.stringify(["a", "b", "c", "d"]), Date.now());
+  const applicationId = Number(application.lastInsertRowid);
+  assert.equal(statements.reviewApplication.run("approved", userId, Date.now(), applicationId).changes, 1);
+  assert.equal(statements.reviewApplication.run("rejected", userId, Date.now(), applicationId).changes, 0);
+
+  const suggestion = statements.createSuggestion.run(guildId, "923456789012345678", userId, "A useful idea", Date.now());
+  const suggestionId = Number(suggestion.lastInsertRowid);
+  statements.voteSuggestion.run(suggestionId, userId, 1);
+  statements.voteSuggestion.run(suggestionId, userId, -1);
+  const votes = statements.getSuggestionVotes.get(suggestionId);
+  assert.equal(votes.upvotes ?? 0, 0);
+  assert.equal(votes.downvotes, 1);
+});
