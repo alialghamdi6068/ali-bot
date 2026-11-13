@@ -74,22 +74,34 @@ function getMember(guild, user) {
 const reminderTimers = new Map();
 
 async function deliverReminder(reminder) {
+  let delivered = false;
+  let deliveryError = null;
   try {
     const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
     if (channel?.isTextBased()) {
       await channel.send({ content: '<@' + reminder.user_id + '> ⏰ Reminder: ' + reminder.message, allowedMentions: { users: [reminder.user_id] } });
-    } else {
+      delivered = true;
+    }
+  } catch (error) {
+    deliveryError = error;
+  }
+  if (!delivered) {
+    try {
       const recipient = await client.users.fetch(reminder.user_id);
       await recipient.send('⏰ Reminder: ' + reminder.message);
+      delivered = true;
+    } catch (error) {
+      deliveryError = error;
     }
+  }
+  if (delivered) {
     statements.completeReminder.run("sent", reminder.id);
     logAction(reminder.guild_id, reminder.user_id, "reminder_sent", reminder.user_id, "Reminder #" + reminder.id);
-  } catch (error) {
-    console.error("Failed to deliver reminder #" + reminder.id + ":", error);
+  } else {
+    console.error("Failed to deliver reminder #" + reminder.id + ":", deliveryError);
     statements.completeReminder.run("failed", reminder.id);
-  } finally {
-    reminderTimers.delete(reminder.id);
   }
+  reminderTimers.delete(reminder.id);
 }
 
 function scheduleReminder(reminder) {
