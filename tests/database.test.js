@@ -59,9 +59,11 @@ test("failed giveaway setup can be rolled back without leaving entries", () => {
 test("community data is persisted and deduplicated", () => {
   const guildId = "community-" + Date.now();
   const userId = "823456789012345678";
+  const firstMessage = statements.recordMessage.get(guildId, userId);
+  assert.equal(firstMessage.messages, 1);
   const xp = statements.addXp.get(guildId, userId, 25, Date.now());
   assert.equal(xp.xp, 25);
-  assert.equal(xp.messages, 1);
+  assert.equal(statements.recordMessage.get(guildId, userId).messages, 2);
   assert.equal(statements.addXp.get(guildId, userId, 30, Date.now()).xp, 55);
 
   assert.equal(statements.unlockAchievement.run(guildId, userId, "first_message", Date.now()).changes, 1);
