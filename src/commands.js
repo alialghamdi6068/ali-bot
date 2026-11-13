@@ -90,6 +90,11 @@ const commands = [
     .addChannelOption(o => o.setName("channel").setDescription("Suggestions channel").addChannelTypes(ChannelType.GuildText).setRequired(true)),
   new SlashCommandBuilder().setName("suggest").setDescription("Submit a server suggestion")
     .addStringOption(o => o.setName("content").setDescription("Your suggestion").setMinLength(5).setMaxLength(1500).setRequired(true)),
+  new SlashCommandBuilder().setName("suggestionreview").setDescription("Review a submitted suggestion")
+    .addIntegerOption(o => o.setName("id").setDescription("Suggestion ID").setRequired(true))
+    .addStringOption(o => o.setName("status").setDescription("Review decision").setRequired(true).addChoices(
+      { name: "Considering", value: "considering" }, { name: "Approved", value: "approved" }, { name: "Rejected", value: "rejected" }
+    )),
   new SlashCommandBuilder().setName("applications").setDescription("Set the staff applications channel")
     .addChannelOption(o => o.setName("channel").setDescription("Applications channel").addChannelTypes(ChannelType.GuildText).setRequired(true)),
   new SlashCommandBuilder().setName("apply").setDescription("Submit a staff application"),
