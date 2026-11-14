@@ -69,8 +69,8 @@ const disabledPrefixCommands = new Set(["welcome","autorole","suggestions","sugg
 function resolvePrefixCommand(input) {
   const normalized = input.trim().toLocaleLowerCase("ar");
   for (const [label, command] of PREFIX_COMMANDS) {
-    if (disabledPrefixCommands.has(command)) continue;
     if (normalized === label || normalized.startsWith(label + " ")) {
+      if (disabledPrefixCommands.has(command)) return null;
       return { command, consumed: label.split(/\s+/).length };
     }
   }

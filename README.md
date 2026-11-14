@@ -13,7 +13,7 @@ A personal, single-server Discord management bot built with Node.js, Discord.js,
 1. Run `npm install`.
 2. Copy `.env.example` to `.env`.
 3. Set `DISCORD_TOKEN` and `GUILD_ID` only.
-4. Enable **Message Content Intent** in the Discord Developer Portal for Arabic prefix commands.
+4. Enable **Message Content Intent** and **Server Members Intent** in the Discord Developer Portal. Message Content is required for Arabic prefix commands; Server Members is required for member lookups and moderation.
 5. Invite the bot with the `bot` and `applications.commands` scopes.
 6. Grant only the permissions needed for the systems you enable: View Channels, Send Messages, Read Message History, Embed Links, Attach Files, Manage Channels, Manage Messages, Manage Roles, Ban Members, Kick Members, Moderate Members, and View Audit Log for staff using `/logs`.
 7. Start with `npm start`.
