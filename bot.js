@@ -1,18 +1,26 @@
 // Ali Bot — single-file Discord.js application.
-// Keep configuration in .env; all bot runtime code lives in this file.
+// Configuration stays in .env. All bot systems and runtime logic live here.
 
 require("dotenv").config();
 
 const {
-  Client, GatewayIntentBits, Partials, ActivityType, PresenceUpdateStatus,
-  PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder,
-  ButtonBuilder, ButtonStyle, MessageFlags
+  Client,
+  GatewayIntentBits,
+  Partials,
+  ActivityType,
+  PresenceUpdateStatus,
+  PermissionFlagsBits,
+  ChannelType,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags
 } = require("discord.js");
 const { randomInt } = require("node:crypto");
 
-const databaseModule = (() => {
-  const module = { exports: {} };
-  const exports = module.exports;
+// Database and persistent storage
+const database = (() => {
 const fs = require("node:fs");
 const path = require("node:path");
 const Database = require("better-sqlite3");
@@ -252,17 +260,12 @@ const statements = {
   saveTranscript: db.prepare("INSERT INTO ticket_transcripts(ticket_id, guild_id, content, created_at) VALUES(?, ?, ?, ?)"),
   getTicketByNumber: db.prepare("SELECT * FROM tickets WHERE guild_id = ? AND number = ?")
 };
-
-module.exports = { db, statements };
-
-  return module.exports;
+  return { db, statements };
 })();
+const { statements } = database;
 
-const { statements } = databaseModule;
-
-const commandsModule = (() => {
-  const module = { exports: {} };
-  const exports = module.exports;
+// Slash command definitions
+const slashCommands = (() => {
 const { SlashCommandBuilder, ChannelType } = require("discord.js");
 
 const commands = [
@@ -387,16 +390,11 @@ const commands = [
 ];
 
 const disabledCommands = new Set(["welcome","autorole","suggestions","suggest","suggestionreview","applications","apply","antiswear","level","leaderboard","invites","achievements","maintenance","reminder"]);
-module.exports = commands.filter(command => !disabledCommands.has(command.name));
-
-  return module.exports;
+  return commands.filter(command => !disabledCommands.has(command.name));
 })();
 
-const slashCommands = commandsModule;
-
-const utilsModule = (() => {
-  const module = { exports: {} };
-  const exports = module.exports;
+// Shared helpers
+const utils = (() => {
 const PREFIX_COMMANDS = [
   ["فك حظر", "unban"],
   ["إلغاء تايم", "untimeout"],
@@ -494,17 +492,12 @@ function formatDate(date) {
     timeZone: "UTC"
   }).format(date);
 }
-
-module.exports = { resolvePrefixCommand, parseDuration, formatDate };
-
-  return module.exports;
+  return { resolvePrefixCommand, parseDuration, formatDate };
 })();
+const { resolvePrefixCommand, parseDuration, formatDate } = utils;
 
-const { resolvePrefixCommand, parseDuration, formatDate } = utilsModule;
-
-const permissionsModule = (() => {
-  const module = { exports: {} };
-  const exports = module.exports;
+// Permission and role hierarchy checks
+const permissions = (() => {
 function assertCanModerateMember({ actor, target, bot, guild }) {
   if (!actor || !target || !bot) throw new Error("Could not verify member role hierarchy.");
   if (actor.id === target.id) throw new Error("You cannot use moderation commands on yourself.");
@@ -538,24 +531,19 @@ function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }
     throw new Error("I cannot change roles for a member with a role equal to or higher than my highest role.");
   }
 }
-
-module.exports = { assertCanModerateMember, assertCanManageRole };
-
-  return module.exports;
+  return { assertCanModerateMember, assertCanManageRole };
 })();
+const { assertCanModerateMember, assertCanManageRole } = permissions;
 
-const { assertCanModerateMember, assertCanManageRole } = permissionsModule;
-
-const communityModule = (() => {
-  const module = { exports: {} };
-  const exports = module.exports;
+// Supporting systems used by the bot
+const community = (() => {
 const {
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder,
   PermissionFlagsBits
 } = require("discord.js");
 const { randomInt } = require("node:crypto");
-const { statements } = databaseModule;
+const { statements } = database;
 
 const inviteCache = new Map();
 const setting = key => statements.getSetting.get(key)?.value ?? "";
@@ -817,19 +805,14 @@ async function createTranscript(channel, ticket, guild, logAction) {
   }
   logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id, "Ticket #" + ticket.number);
 }
-
-module.exports = {
-  setting, setSetting, cacheInvites, handleInviteCreate, handleInviteDelete, handleMemberAdd,
-  handleMessage, submitSuggestion, submitApplication, openApplication,
-  handleInteraction, createTranscript
-};
-
-  return module.exports;
+  return {
+    setting, setSetting, cacheInvites, handleInviteCreate, handleInviteDelete,
+    handleMemberAdd, handleMessage, submitSuggestion, submitApplication,
+    openApplication, handleInteraction, createTranscript
+  };
 })();
 
-const community = communityModule;
-
-// Main bot behavior
+// Main bot
 const requiredEnv = ["DISCORD_TOKEN", "GUILD_ID"];
 for (const key of requiredEnv) {
   if (!process.env[key]?.trim()) {
