@@ -906,7 +906,7 @@ function logAction(guildId, actorId, action, targetId, details) {
         .setTitle(action.replaceAll("_", " ").toUpperCase())
         .setDescription(message || "No additional details.")
         .addFields(
-          { name: "Actor", value: actorId && /^\\d{17,20}$/.test(actorId) ? "<@" + actorId + ">" : (actorId || "System / unknown"), inline: true },
+          { name: "Actor", value: actorId && /^\d{17,20}$/.test(actorId) ? "<@" + actorId + ">" : (actorId || "System / unknown"), inline: true },
           { name: "Target", value: targetId ? "<@" + targetId + ">" : "None", inline: true }
         )
         .setTimestamp();
