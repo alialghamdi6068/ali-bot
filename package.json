@@ -6,7 +6,7 @@
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
-    "check": "node --check bot.js",
+    "check": "node --check bot.js && node --check test/bot.test.js",
     "test": "node --test"
   },
   "engines": {
