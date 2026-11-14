@@ -1982,13 +1982,13 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
 
 client.on("guildMemberAdd", member => {
   if (!isConfiguredGuild(member.guild)) return;
-  logAction(member.guild.id, client.user.id, "member_join", member.id,
+  logAction(member.guild.id, member.id, "member_join", member.id,
     member.user.tag + " joined the server");
 });
 
 client.on("guildMemberRemove", member => {
   if (!isConfiguredGuild(member.guild)) return;
-  logAction(member.guild.id, client.user.id, "member_leave", member.id,
+  logAction(member.guild.id, member.id, "member_leave", member.id,
     (member.user?.tag || member.id) + " left the server");
 });
 
