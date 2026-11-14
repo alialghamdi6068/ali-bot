@@ -244,7 +244,8 @@ const slashCommands = (() => {
     .addChannelOption(o => o.setName("transcriptchannel").setDescription("Transcript channel").addChannelTypes(ChannelType.GuildText))
     .addChannelOption(o => o.setName("supportcategory").setDescription("Support category").addChannelTypes(ChannelType.GuildCategory))
     .addChannelOption(o => o.setName("complaintcategory").setDescription("Complaint category").addChannelTypes(ChannelType.GuildCategory))
-    .addChannelOption(o => o.setName("partnershipcategory").setDescription("Partnership category").addChannelTypes(ChannelType.GuildCategory)),
+    .addChannelOption(o => o.setName("partnershipcategory").setDescription("Partnership category").addChannelTypes(ChannelType.GuildCategory))
+    .addChannelOption(o => o.setName("panelchannel").setDescription("Publish the ticket button panel here").addChannelTypes(ChannelType.GuildText)),
   new SlashCommandBuilder().setName("logs").setDescription("View logs or set the log channel")
     .addChannelOption(o => o.setName("channel").setDescription("Channel for automatic logs").addChannelTypes(ChannelType.GuildText))
   ];
@@ -535,6 +536,39 @@ function getTicket(channelId) {
   return statements.getTicketByChannel.get(channelId);
 }
 
+function ticketControlRow(closed = false) {
+  const buttons = closed
+    ? [
+        new ButtonBuilder().setCustomId("ticket:action:reopen").setLabel("Reopen").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("ticket:action:delete").setLabel("Delete").setStyle(ButtonStyle.Danger)
+      ]
+    : [
+        new ButtonBuilder().setCustomId("ticket:action:close").setLabel("Close").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("ticket:action:claim").setLabel("Claim").setStyle(ButtonStyle.Primary)
+      ];
+
+  return new ActionRowBuilder().addComponents(...buttons);
+}
+
+function ticketPanelPayload() {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("ticket:create:support").setLabel("Support").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("ticket:create:complaint").setLabel("Complaint").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("ticket:create:partnership").setLabel("Partnership").setStyle(ButtonStyle.Success)
+  );
+
+  return {
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle("Contact Staff")
+        .setDescription("Choose a category below to open a private ticket. Please do not open duplicate tickets.")
+    ],
+    components: [row],
+    allowedMentions: { parse: [] }
+  };
+}
+
 async function createTicket(context, category = "support") {
   const { guild, user, channel } = context;
   if (!["support", "complaint", "partnership"].includes(category)) throw new Error("Choose support, complaint, or partnership.");
@@ -594,6 +628,7 @@ async function createTicket(context, category = "support") {
     await ticketChannel.send({
       content: `<@!${user.id}>`,
       embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`Ticket #${number}`).setDescription("Describe your issue here. A staff member will assist you.")],
+      components: [ticketControlRow()],
       allowedMentions: { users: [user.id] }
     });
   } catch (error) {
@@ -618,26 +653,63 @@ async function closeTicket(context) {
 }
 
 async function handleTicketInteraction(interaction) {
-  if (!interaction.isButton() || !interaction.customId.startsWith("ticket:close:")) return false;
+  if (!interaction.isButton() || !interaction.customId.startsWith("ticket:")) return false;
+  if (!interaction.guild || interaction.guild.id !== GUILD_ID) return false;
+
   const parts = interaction.customId.split(":");
+  const context = {
+    guild: interaction.guild,
+    member: await interaction.guild.members.fetch(interaction.user.id),
+    user: interaction.user,
+    channel: interaction.channel,
+    isInteraction: true,
+    reply: interaction.reply.bind(interaction),
+    followUp: interaction.followUp.bind(interaction),
+    replied: interaction.replied,
+    deferred: interaction.deferred
+  };
+
+  if (parts[1] === "create") {
+    const category = parts[2];
+    if (!["support", "complaint", "partnership"].includes(category)) return false;
+    await createTicket(context, category);
+    return true;
+  }
+
+  if (parts[1] === "action") {
+    const action = parts[2];
+    if (action === "close") await closeTicket(context);
+    else if (action === "claim") await claimTicket(context);
+    else if (action === "reopen") await reopenTicket(context);
+    else if (action === "delete") await deleteTicket(context);
+    else return false;
+    return true;
+  }
+
+  if (parts[1] !== "close") return false;
+
   const action = parts[2];
   const channelId = parts[3];
   const requesterId = parts[4];
-  if (!interaction.guild || interaction.guild.id !== GUILD_ID || !["confirm", "cancel"].includes(action)) return false;
+  if (!["confirm", "cancel"].includes(action) || !channelId || !requesterId) return false;
+
   if (interaction.user.id !== requesterId && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
     await interaction.reply({ content: "Only the person who requested closure or ticket staff can use these buttons.", ephemeral: true });
     return true;
   }
+
   if (action === "cancel") {
     await interaction.update({ content: "Ticket closure cancelled.", components: [] });
     return true;
   }
+
   const ticket = getTicket(channelId);
   const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
   if (!ticket || ticket.status !== "open" || !channel) {
     await interaction.update({ content: "This ticket is no longer open.", components: [] });
     return true;
   }
+
   try {
     await ticketSupport.createTranscript(channel, ticket, interaction.guild, logAction);
   } catch (error) {
@@ -649,13 +721,22 @@ async function handleTicketInteraction(interaction) {
     });
     return true;
   }
+
   await channel.permissionOverwrites.edit(ticket.user_id, { SendMessages: false, AttachFiles: false });
   statements.updateTicketStatus.run("closed", Date.now(), channelId);
   logAction(interaction.guild.id, interaction.user.id, "ticket_close", ticket.user_id, "Ticket #" + ticket.number);
-  await interaction.update({ content: "Ticket #" + ticket.number + " has been closed. The transcript was saved successfully.", components: [] });
+  await interaction.update({
+    content: "Ticket #" + ticket.number + " has been closed. The transcript was saved successfully.",
+    components: []
+  });
+  await channel.send({
+    content: "This ticket is closed. Staff can reopen it or delete it using the buttons below.",
+    components: [ticketControlRow(true)]
+  }).catch(error => {
+    logAction(interaction.guild.id, interaction.user.id, "ticket_control_message_failed", ticket.user_id, error.message);
+  });
   return true;
 }
-
 async function reopenTicket(context) {
   const ticket = getTicket(context.channel.id);
   if (!ticket || ticket.status !== "closed") throw new Error("This channel is not a closed ticket.");
@@ -670,6 +751,10 @@ async function reopenTicket(context) {
   });
   statements.updateTicketStatus.run("open", null, context.channel.id);
   logAction(context.guild.id, context.user.id, "ticket_reopen", ticket.user_id, `Ticket #${ticket.number}`);
+  await context.channel.send({
+    content: "This ticket is open again. Use the buttons below to close it or claim it.",
+    components: [ticketControlRow()]
+  });
   await reply(context, `Ticket #${ticket.number} has been reopened.`, false);
 }
 
@@ -682,6 +767,9 @@ async function deleteTicket(context) {
   } catch (error) {
     logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
     throw new Error("The transcript could not be saved, so the ticket was not deleted: " + error.message);
+  }
+  if (context.isInteraction) {
+    await reply(context, `Ticket #${ticket.number} deleted.`);
   }
   await context.channel.delete(`Ticket #${ticket.number} deleted by ${context.user.tag}`);
   statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
@@ -998,14 +1086,24 @@ async function execute(context, name, data = {}) {
         ["ticket_category_complaint_id", data.complaintCategory],
         ["ticket_category_partnership_id", data.partnershipCategory]
       ];
-      if (!entries.some(entry => entry[1])) throw new Error("Choose at least one transcript or ticket category channel.");
+      if (!entries.some(entry => entry[1]) && !data.panelChannel) {
+        throw new Error("Choose a transcript channel, ticket category, or panel channel.");
+      }
       if (data.transcriptChannel && !data.transcriptChannel.isTextBased()) throw new Error("Transcript destination must be a text channel.");
+      if (data.panelChannel && (!data.panelChannel.isTextBased() || data.panelChannel.guildId !== guild.id)) {
+        throw new Error("Ticket panel destination must be a text channel in this server.");
+      }
       for (const [key, value] of entries.slice(1)) {
         if (value && value.type !== ChannelType.GuildCategory) throw new Error("Ticket parents must be category channels.");
       }
       for (const [key, value] of entries) if (value) ticketSupport.setSetting(key, value.id);
+      if (data.panelChannel) {
+        const panel = await data.panelChannel.send(ticketPanelPayload());
+        ticketSupport.setSetting("ticket_panel_channel_id", data.panelChannel.id);
+        logAction(guild.id, user.id, "ticket_panel_publish", panel.id, "Ticket panel published in #" + data.panelChannel.name);
+      }
       logAction(guild.id, user.id, "ticket_config", null, entries.filter(x => x[1]).map(x => x[0]).join(", "));
-      await reply(context, "Ticket settings updated.", false);
+      await reply(context, data.panelChannel ? "Ticket settings updated and the button panel was published." : "Ticket settings updated.", false);
       break;
     }
     case "close": return closeTicket(context);
@@ -1251,6 +1349,7 @@ async function handlePrefix(message) {
         data.supportCategory = mentioned[1];
         data.complaintCategory = mentioned[2];
         data.partnershipCategory = mentioned[3];
+        data.panelChannel = mentioned[4];
         break;
       }
         break;
@@ -1475,6 +1574,7 @@ client.on("interactionCreate", async interaction => {
       data.supportCategory = interaction.options.getChannel("supportcategory");
       data.complaintCategory = interaction.options.getChannel("complaintcategory");
       data.partnershipCategory = interaction.options.getChannel("partnershipcategory");
+      data.panelChannel = interaction.options.getChannel("panelchannel");
     }
 
     const context = {
