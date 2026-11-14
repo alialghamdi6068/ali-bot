@@ -1500,7 +1500,11 @@ client.on("interactionCreate", async interaction => {
 client.on("error", error => console.error("Discord client error:", error));
 process.on("unhandledRejection", error => console.error("Unhandled rejection:", error));
 
-client.login(TOKEN).catch(error => {
-  console.error("Failed to log in. Check DISCORD_TOKEN and bot configuration.", error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  client.login(TOKEN).catch(error => {
+    console.error("Failed to log in. Check DISCORD_TOKEN and bot configuration.", error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { resolvePrefixCommand, parseDuration, formatDate };
