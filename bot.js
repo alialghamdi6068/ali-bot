@@ -377,7 +377,7 @@ function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }
 const { assertCanModerateMember, assertCanManageRole } = permissions;
 
 // Supporting systems used by the bot
-const community = (() => {
+const ticketSupport = (() => {
   const setting = key => statements.getSetting.get(key)?.value ?? "";
   const setSetting = (key, value) => statements.setSetting.run(key, String(value ?? ""));
 
@@ -547,7 +547,7 @@ async function createTicket(context, category = "support") {
   const ticketChannel = await guild.channels.create({
     name: String(number),
     type: ChannelType.GuildText,
-    parent: community.setting("ticket_category_" + category + "_id") || undefined,
+    parent: ticketSupport.setting("ticket_category_" + category + "_id") || undefined,
     topic: `Ticket #${number} | Owner: ${user.id}`,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -638,7 +638,7 @@ async function handleTicketInteraction(interaction) {
     return true;
   }
   try {
-    await community.createTranscript(channel, ticket, interaction.guild, logAction);
+    await ticketSupport.createTranscript(channel, ticket, interaction.guild, logAction);
   } catch (error) {
     console.error("Ticket transcript failed:", error);
     logAction(interaction.guild.id, interaction.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
@@ -677,7 +677,7 @@ async function deleteTicket(context) {
   if (!ticket) throw new Error("This channel is not a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
   try {
-    await community.createTranscript(context.channel, ticket, context.guild, logAction);
+    await ticketSupport.createTranscript(context.channel, ticket, context.guild, logAction);
   } catch (error) {
     logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
     throw new Error("The transcript could not be saved, so the ticket was not deleted: " + error.message);
@@ -1002,7 +1002,7 @@ async function execute(context, name, data = {}) {
       for (const [key, value] of entries.slice(1)) {
         if (value && value.type !== ChannelType.GuildCategory) throw new Error("Ticket parents must be category channels.");
       }
-      for (const [key, value] of entries) if (value) community.setSetting(key, value.id);
+      for (const [key, value] of entries) if (value) ticketSupport.setSetting(key, value.id);
       logAction(guild.id, user.id, "ticket_config", null, entries.filter(x => x[1]).map(x => x[0]).join(", "));
       await reply(context, "Ticket settings updated.", false);
       break;
