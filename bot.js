@@ -386,7 +386,8 @@ const commands = [
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
   new SlashCommandBuilder().setName("achievements").setDescription("Show unlocked achievements")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
-    new SlashCommandBuilder().setName("logs").setDescription("Show recent moderation and bot logs")
+    new SlashCommandBuilder().setName("logs").setDescription("View logs or set the log channel")
+      .addChannelOption(o => o.setName("channel").setDescription("Channel for automatic logs").addChannelTypes(ChannelType.GuildText))
 ];
 
 const disabledCommands = new Set(["welcome","autorole","suggestions","suggest","suggestionreview","applications","apply","antiswear","level","leaderboard","invites","achievements","maintenance","reminder"]);
@@ -786,24 +787,71 @@ async function handleInteraction(interaction, logAction) {
 }
 
 async function createTranscript(channel, ticket, guild, logAction) {
-  const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-  if (!messages) throw new Error("Could not fetch ticket messages for the transcript.");
-  const ordered = [...messages.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-  const lines = ordered.map(message => {
-    const body = message.content || (message.attachments.size ? "[Attachment]" : "[Embed or non-text message]");
-    return "[" + new Date(message.createdTimestamp).toISOString() + "] " + message.author.tag + ": " + body;
-  });
-  const content = "Ticket #" + ticket.number + " | " + guild.name + "\nOwner: " + ticket.user_id + "\n\n" + lines.join("\n");
-  statements.saveTranscript.run(ticket.id, guild.id, content, Date.now());
-  const channelId = setting("transcript_channel_id");
-  if (channelId) {
-    const target = await guild.channels.fetch(channelId).catch(() => null);
-    if (target?.isTextBased()) {
-      const file = new AttachmentBuilder(Buffer.from(content, "utf8"), { name: "ticket-" + ticket.number + "-transcript.txt" });
-      await target.send({ content: "Transcript for ticket #" + ticket.number + ".", files: [file] });
+  const messages = [];
+  let before;
+
+  while (true) {
+    const page = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    if (!page.size) break;
+
+    messages.push(...page.values());
+    if (page.size < 100) break;
+    if (messages.length >= 10000) {
+      throw new Error("This ticket has more than 10,000 messages. The transcript was not marked as complete.");
     }
+
+    before = page.last().id;
   }
-  logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id, "Ticket #" + ticket.number);
+
+  const ordered = messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+  const lines = ordered.map(message => {
+    const attachments = [...message.attachments.values()].map(file => file.url);
+    const embeds = message.embeds.map(embed => embed.title || embed.description || "[Embed]");
+    const parts = [
+      message.content || "",
+      ...attachments.map(url => "[Attachment] " + url),
+      ...embeds.map(value => "[Embed] " + value)
+    ].filter(Boolean);
+    const body = parts.join("\n") || "[Empty message]";
+    return "[" + new Date(message.createdTimestamp).toISOString() + "] " +
+      message.author.tag + " (" + message.author.id + "):\n" + body;
+  });
+
+  const content = "Ticket #" + ticket.number + " | " + guild.name +
+    "\nOwner: " + ticket.user_id +
+    "\nMessages: " + ordered.length +
+    "\n\n" + lines.join("\n\n");
+
+  statements.saveTranscript.run(ticket.id, guild.id, content, Date.now());
+
+  const transcriptChannelId = setting("transcript_channel_id");
+  if (transcriptChannelId) {
+    const target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
+    if (!target?.isTextBased()) {
+      throw new Error("The configured transcript channel is unavailable.");
+    }
+
+    const buffer = Buffer.from(content, "utf8");
+    const chunkSize = 7 * 1024 * 1024;
+    const files = [];
+
+    for (let offset = 0, part = 1; offset < buffer.length; offset += chunkSize, part += 1) {
+      const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, buffer.length));
+      const suffix = buffer.length > chunkSize ? "-part-" + part : "";
+      files.push(new AttachmentBuilder(chunk, {
+        name: "ticket-" + ticket.number + "-transcript" + suffix + ".txt"
+      }));
+    }
+
+    await target.send({
+      content: "Transcript for ticket #" + ticket.number + " (" + ordered.length + " messages).",
+      files,
+      allowedMentions: { parse: [] }
+    });
+  }
+
+  logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id,
+    "Ticket #" + ticket.number + " — " + ordered.length + " messages");
 }
   return {
     setting, setSetting, cacheInvites, handleInviteCreate, handleInviteDelete,
@@ -836,11 +884,35 @@ const client = new Client({
 });
 
 function logAction(guildId, actorId, action, targetId, details) {
+  const message = String(details ?? "").slice(0, 3500);
+
   try {
-    statements.addLog.run(guildId, actorId, action, targetId ?? null, String(details), Date.now());
+    statements.addLog.run(guildId, actorId || client.user?.id || "system", action, targetId ?? null, message, Date.now());
   } catch (error) {
-    console.error("Failed to persist action log:", error);
+    console.error("Failed to save action log:", error);
+    return;
   }
+
+  const logChannelId = statements.getSetting.get("log_channel_id")?.value;
+  if (!logChannelId || !client.isReady()) return;
+
+  client.channels.fetch(logChannelId)
+    .then(channel => {
+      if (!channel?.isTextBased()) return null;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle(action.replaceAll("_", " ").toUpperCase())
+        .setDescription(message || "No additional details.")
+        .addFields(
+          { name: "Actor", value: actorId ? "<@" + actorId + ">" : "System", inline: true },
+          { name: "Target", value: targetId ? "<@" + targetId + ">" : "None", inline: true }
+        )
+        .setTimestamp();
+
+      return channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+    })
+    .catch(error => console.error("Could not send an automatic log:", error));
 }
 
 function isInConfiguredGuild(guild) {
@@ -1042,11 +1114,16 @@ async function handleTicketInteraction(interaction) {
   } catch (error) {
     console.error("Ticket transcript failed:", error);
     logAction(interaction.guild.id, interaction.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
+    await interaction.update({
+      content: "The transcript could not be saved. This ticket is still open; please try again later.",
+      components: []
+    });
+    return true;
   }
   await channel.permissionOverwrites.edit(ticket.user_id, { SendMessages: false, AttachFiles: false });
   statements.updateTicketStatus.run("closed", Date.now(), channelId);
   logAction(interaction.guild.id, interaction.user.id, "ticket_close", ticket.user_id, "Ticket #" + ticket.number);
-  await interaction.update({ content: "Ticket #" + ticket.number + " has been closed. Transcript processing completed.", components: [] });
+  await interaction.update({ content: "Ticket #" + ticket.number + " has been closed. The transcript was saved successfully.", components: [] });
   return true;
 }
 
@@ -1075,6 +1152,7 @@ async function deleteTicket(context) {
     await community.createTranscript(context.channel, ticket, context.guild, logAction);
   } catch (error) {
     logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
+    throw new Error("The transcript could not be saved, so the ticket was not deleted: " + error.message);
   }
   await context.channel.delete(`Ticket #${ticket.number} deleted by ${context.user.tag}`);
   statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
@@ -1636,6 +1714,17 @@ async function execute(context, name, data = {}) {
       await reply(context, `Pong: ${client.ws.ping}ms`);
       break;
     case "logs": {
+      if (data.channel) {
+        requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+        if (data.channel.guildId !== guild.id || !data.channel.isTextBased()) {
+          throw new Error("Choose a text channel from this server.");
+        }
+        statements.setSetting.run("log_channel_id", data.channel.id);
+        logAction(guild.id, user.id, "log_channel_config", data.channel.id, "Automatic logs channel configured");
+        await reply(context, "Automatic logs will now be sent to <#" + data.channel.id + ">.", false);
+        break;
+      }
+
       requirePermission(member, PermissionFlagsBits.ViewAuditLog, "View Audit Log");
       const rows = statements.getLogs.all(guild.id);
       const description = rows.length
@@ -1814,6 +1903,10 @@ async function handlePrefix(message) {
         data.message = args.slice(1).join(" ");
         if (!data.duration || !data.message) throw new Error("Usage: !تذكير 10m message");
         break;
+      case "logs":
+        data.channel = message.mentions.channels.first() ?? null;
+        if (args.length && !data.channel) throw new Error("Mention a text channel to configure automatic logs.");
+        break;
       case "userinfo":
         data.target = args.length ? await target() : message.author;
         break;
@@ -1848,11 +1941,108 @@ client.once("ready", async () => {
 
 client.on("messageCreate", handlePrefix);
 
+function isConfiguredGuild(guild) {
+  return Boolean(guild && guild.id === GUILD_ID);
+}
+
+client.on("messageDelete", async message => {
+  if (message.partial) message = await message.fetch().catch(() => message);
+  if (!isConfiguredGuild(message.guild) || message.author?.bot) return;
+  const content = (message.content || "[No cached message content]").slice(0, 1500);
+  logAction(message.guild.id, message.author?.id || client.user.id, "message_delete",
+    message.author?.id, "Channel #" + message.channel?.name + ": " + content);
+});
+
+client.on("messageUpdate", async (oldMessage, newMessage) => {
+  if (oldMessage.partial) oldMessage = await oldMessage.fetch().catch(() => oldMessage);
+  if (newMessage.partial) newMessage = await newMessage.fetch().catch(() => newMessage);
+  if (!isConfiguredGuild(newMessage.guild) || newMessage.author?.bot) return;
+  if (oldMessage.content === newMessage.content) return;
+  logAction(newMessage.guild.id, newMessage.author?.id || client.user.id, "message_edit",
+    newMessage.author?.id, "Channel #" + newMessage.channel?.name +
+    "\nBefore: " + (oldMessage.content || "[Empty]").slice(0, 700) +
+    "\nAfter: " + (newMessage.content || "[Empty]").slice(0, 700));
+});
+
+client.on("guildMemberAdd", member => {
+  if (!isConfiguredGuild(member.guild)) return;
+  logAction(member.guild.id, client.user.id, "member_join", member.id,
+    member.user.tag + " joined the server");
+});
+
+client.on("guildMemberRemove", member => {
+  if (!isConfiguredGuild(member.guild)) return;
+  logAction(member.guild.id, client.user.id, "member_leave", member.id,
+    (member.user?.tag || member.id) + " left the server");
+});
+
+client.on("guildMemberUpdate", (oldMember, newMember) => {
+  if (!isConfiguredGuild(newMember.guild)) return;
+  const changes = [];
+  const oldRoles = new Set(oldMember.roles.cache.keys());
+  const newRoles = new Set(newMember.roles.cache.keys());
+  const added = [...newRoles].filter(id => !oldRoles.has(id)).map(id => newMember.guild.roles.cache.get(id)?.name || id);
+  const removed = [...oldRoles].filter(id => !newRoles.has(id)).map(id => oldMember.guild.roles.cache.get(id)?.name || id);
+  if (added.length) changes.push("Roles added: " + added.join(", "));
+  if (removed.length) changes.push("Roles removed: " + removed.join(", "));
+  if (oldMember.nickname !== newMember.nickname) {
+    changes.push("Nickname: " + (oldMember.nickname || oldMember.user.username) +
+      " → " + (newMember.nickname || newMember.user.username));
+  }
+  if (changes.length) logAction(newMember.guild.id, client.user.id, "member_update", newMember.id, changes.join("\n"));
+});
+
+client.on("channelCreate", channel => {
+  if (!isConfiguredGuild(channel.guild)) return;
+  logAction(channel.guild.id, client.user.id, "channel_create", channel.id,
+    "Created #" + channel.name);
+});
+
+client.on("channelUpdate", (oldChannel, newChannel) => {
+  if (!isConfiguredGuild(newChannel.guild)) return;
+  const changes = [];
+  if (oldChannel.name !== newChannel.name) changes.push("Name: " + oldChannel.name + " → " + newChannel.name);
+  if (oldChannel.topic !== newChannel.topic) changes.push("Topic changed");
+  if (oldChannel.parentId !== newChannel.parentId) changes.push("Category changed");
+  if (changes.length) logAction(newChannel.guild.id, client.user.id, "channel_update", newChannel.id, changes.join("\n"));
+});
+
 client.on("channelDelete", channel => {
+  if (!isConfiguredGuild(channel.guild)) return;
   const ticket = getTicket(channel.id);
   if (ticket && ticket.status !== "deleted") {
     statements.updateTicketStatus.run("deleted", Date.now(), channel.id);
   }
+  logAction(channel.guild.id, client.user.id, "channel_delete", channel.id, "Deleted #" + channel.name);
+});
+
+client.on("roleCreate", role => {
+  if (!isConfiguredGuild(role.guild)) return;
+  logAction(role.guild.id, client.user.id, "role_create", role.id, "Created role " + role.name);
+});
+
+client.on("roleUpdate", (oldRole, newRole) => {
+  if (!isConfiguredGuild(newRole.guild)) return;
+  const changes = [];
+  if (oldRole.name !== newRole.name) changes.push("Name: " + oldRole.name + " → " + newRole.name);
+  if (oldRole.color !== newRole.color) changes.push("Color changed");
+  if (oldRole.permissions.bitfield !== newRole.permissions.bitfield) changes.push("Permissions changed");
+  if (changes.length) logAction(newRole.guild.id, client.user.id, "role_update", newRole.id, changes.join("\n"));
+});
+
+client.on("roleDelete", role => {
+  if (!isConfiguredGuild(role.guild)) return;
+  logAction(role.guild.id, client.user.id, "role_delete", role.id, "Deleted role " + role.name);
+});
+
+client.on("guildBanAdd", ban => {
+  if (!isConfiguredGuild(ban.guild)) return;
+  logAction(ban.guild.id, client.user.id, "member_ban", ban.user.id, "Banned " + ban.user.tag);
+});
+
+client.on("guildBanRemove", ban => {
+  if (!isConfiguredGuild(ban.guild)) return;
+  logAction(ban.guild.id, client.user.id, "member_unban", ban.user.id, "Unbanned " + ban.user.tag);
 });
 
 client.on("interactionCreate", async interaction => {
@@ -1898,6 +2088,7 @@ client.on("interactionCreate", async interaction => {
     if (name === "say") data.message = interaction.options.getString("message");
     if (name === "dm") data.message = interaction.options.getString("message");
     if (["role", "removerole"].includes(name)) data.role = interaction.options.getRole("role");
+    if (name === "logs") data.channel = interaction.options.getChannel("channel");
     if (name === "userinfo") data.target = interaction.options.getUser("user") ?? interaction.user;
     if (name === "maintenance") {
       data.enabled = interaction.options.getBoolean("enabled");
