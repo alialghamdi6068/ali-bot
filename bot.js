@@ -93,84 +93,6 @@ db.exec(`
     value TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS reminders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    message TEXT NOT NULL,
-    due_at INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    created_at INTEGER NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_reminders_status_due
-    ON reminders(status, due_at);
-
-  CREATE TABLE IF NOT EXISTS suggestions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    message_id TEXT,
-    user_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    created_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS suggestion_votes (
-    suggestion_id INTEGER NOT NULL REFERENCES suggestions(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL,
-    vote INTEGER NOT NULL CHECK(vote IN (-1, 1)),
-    PRIMARY KEY(suggestion_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS applications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    answers_json TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    channel_id TEXT,
-    message_id TEXT,
-    reviewed_by TEXT,
-    reviewed_at INTEGER,
-    created_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS levels (
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    xp INTEGER NOT NULL DEFAULT 0,
-    level INTEGER NOT NULL DEFAULT 0,
-    messages INTEGER NOT NULL DEFAULT 0,
-    last_xp_at INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY(guild_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS invite_tracking (
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    uses INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY(guild_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS achievements (
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    achievement_key TEXT NOT NULL,
-    unlocked_at INTEGER NOT NULL,
-    PRIMARY KEY(guild_id, user_id, achievement_key)
-  );
-
-  CREATE TABLE IF NOT EXISTS blocked_words (
-    guild_id TEXT NOT NULL,
-    word TEXT NOT NULL,
-    created_by TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    PRIMARY KEY(guild_id, word)
-  );
-
   CREATE TABLE IF NOT EXISTS ticket_transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
@@ -227,38 +149,11 @@ const statements = {
   endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status = 'active'"),
   getSetting: db.prepare("SELECT value FROM settings WHERE key = ?"),
   setSetting: db.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
-  createReminder: db.prepare("INSERT INTO reminders(guild_id, user_id, channel_id, message, due_at, created_at) VALUES(?, ?, ?, ?, ?, ?)"),
-  getPendingReminders: db.prepare("SELECT * FROM reminders WHERE status = 'pending' ORDER BY due_at"),
-  completeReminder: db.prepare("UPDATE reminders SET status = ? WHERE id = ? AND status = 'pending'"),
     addLog: db.prepare(`
     INSERT INTO logs(guild_id, actor_id, action, target_id, details, created_at)
     VALUES(?, ?, ?, ?, ?, ?)
   `),
   getLogs: db.prepare("SELECT * FROM logs WHERE guild_id = ? ORDER BY id DESC LIMIT 15"),
-  getSuggestionChannel: db.prepare("SELECT * FROM suggestions WHERE id = ? AND guild_id = ?"),
-  updateSuggestionStatus: db.prepare("UPDATE suggestions SET status = ? WHERE id = ? AND guild_id = ?"),
-  createSuggestion: db.prepare("INSERT INTO suggestions(guild_id, channel_id, user_id, content, created_at) VALUES(?, ?, ?, ?, ?)"),
-  setSuggestionMessage: db.prepare("UPDATE suggestions SET message_id = ? WHERE id = ?"),
-  deleteSuggestion: db.prepare("DELETE FROM suggestions WHERE id = ?"),
-  voteSuggestion: db.prepare("INSERT INTO suggestion_votes(suggestion_id, user_id, vote) VALUES(?, ?, ?) ON CONFLICT(suggestion_id, user_id) DO UPDATE SET vote = excluded.vote"),
-  getSuggestionVotes: db.prepare("SELECT SUM(CASE WHEN vote = 1 THEN 1 ELSE 0 END) AS upvotes, SUM(CASE WHEN vote = -1 THEN 1 ELSE 0 END) AS downvotes FROM suggestion_votes WHERE suggestion_id = ?"),
-  createApplication: db.prepare("INSERT INTO applications(guild_id, user_id, answers_json, created_at) VALUES(?, ?, ?, ?)"),
-  setApplicationMessage: db.prepare("UPDATE applications SET channel_id = ?, message_id = ? WHERE id = ?"),
-  getApplication: db.prepare("SELECT * FROM applications WHERE id = ? AND guild_id = ?"),
-  reviewApplication: db.prepare("UPDATE applications SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'"),
-  recordMessage: db.prepare("INSERT INTO levels(guild_id, user_id, messages) VALUES(?, ?, 1) ON CONFLICT(guild_id, user_id) DO UPDATE SET messages = messages + 1 RETURNING *"),
-  addXp: db.prepare("INSERT INTO levels(guild_id, user_id, xp, level, last_xp_at) VALUES(?, ?, ?, 0, ?) ON CONFLICT(guild_id, user_id) DO UPDATE SET xp = xp + excluded.xp, last_xp_at = excluded.last_xp_at RETURNING *"),
-  setLevel: db.prepare("UPDATE levels SET level = ? WHERE guild_id = ? AND user_id = ?"),
-  getLevel: db.prepare("SELECT * FROM levels WHERE guild_id = ? AND user_id = ?"),
-  getLeaderboard: db.prepare("SELECT * FROM levels WHERE guild_id = ? ORDER BY level DESC, xp DESC LIMIT 10"),
-  addInvite: db.prepare("INSERT INTO invite_tracking(guild_id, user_id, uses) VALUES(?, ?, 1) ON CONFLICT(guild_id, user_id) DO UPDATE SET uses = uses + 1"),
-  getInvites: db.prepare("SELECT uses FROM invite_tracking WHERE guild_id = ? AND user_id = ?"),
-  getTopInvites: db.prepare("SELECT * FROM invite_tracking WHERE guild_id = ? ORDER BY uses DESC LIMIT 10"),
-  unlockAchievement: db.prepare("INSERT OR IGNORE INTO achievements(guild_id, user_id, achievement_key, unlocked_at) VALUES(?, ?, ?, ?)"),
-  getAchievements: db.prepare("SELECT * FROM achievements WHERE guild_id = ? AND user_id = ? ORDER BY unlocked_at DESC"),
-  getBlockedWords: db.prepare("SELECT word FROM blocked_words WHERE guild_id = ? ORDER BY word"),
-  addBlockedWord: db.prepare("INSERT OR IGNORE INTO blocked_words(guild_id, word, created_by, created_at) VALUES(?, ?, ?, ?)"),
-  removeBlockedWord: db.prepare("DELETE FROM blocked_words WHERE guild_id = ? AND word = ?"),
   saveTranscript: db.prepare("INSERT INTO ticket_transcripts(ticket_id, guild_id, content, created_at) VALUES(?, ?, ?, ?)"),
   getTicketByNumber: db.prepare("SELECT * FROM tickets WHERE guild_id = ? AND number = ?")
 };
