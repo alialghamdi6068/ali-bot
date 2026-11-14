@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const {
   Client,
+  AuditLogEvent,
   GatewayIntentBits,
   Partials,
   ActivityType,
@@ -887,7 +888,7 @@ function logAction(guildId, actorId, action, targetId, details) {
   const message = String(details ?? "").slice(0, 3500);
 
   try {
-    statements.addLog.run(guildId, actorId || client.user?.id || "system", action, targetId ?? null, message, Date.now());
+    statements.addLog.run(guildId, actorId || "system", action, targetId ?? null, message, Date.now());
   } catch (error) {
     console.error("Failed to save action log:", error);
     return;
@@ -905,7 +906,7 @@ function logAction(guildId, actorId, action, targetId, details) {
         .setTitle(action.replaceAll("_", " ").toUpperCase())
         .setDescription(message || "No additional details.")
         .addFields(
-          { name: "Actor", value: actorId ? "<@" + actorId + ">" : "System", inline: true },
+          { name: "Actor", value: actorId && /^\\d{17,20}$/.test(actorId) ? "<@" + actorId + ">" : (actorId || "System / unknown"), inline: true },
           { name: "Target", value: targetId ? "<@" + targetId + ">" : "None", inline: true }
         )
         .setTimestamp();
@@ -1941,6 +1942,20 @@ client.once("ready", async () => {
 
 client.on("messageCreate", handlePrefix);
 
+async function findAuditExecutor(guild, eventType, targetId) {
+  if (!guild || !targetId) return null;
+
+  try {
+    const audit = await guild.fetchAuditLogs({ type: eventType, limit: 8 });
+    const entry = audit.entries.find(item =>
+      item.targetId === targetId && Date.now() - item.createdTimestamp < 15_000
+    );
+    return entry?.executor?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function isConfiguredGuild(guild) {
   return Boolean(guild && guild.id === GUILD_ID);
 }
@@ -1949,7 +1964,8 @@ client.on("messageDelete", async message => {
   if (message.partial) message = await message.fetch().catch(() => message);
   if (!isConfiguredGuild(message.guild) || message.author?.bot) return;
   const content = (message.content || "[No cached message content]").slice(0, 1500);
-  logAction(message.guild.id, message.author?.id || client.user.id, "message_delete",
+  const actorId = await findAuditExecutor(message.guild, AuditLogEvent.MessageDelete, message.author?.id);
+  logAction(message.guild.id, actorId || message.author?.id || "system", "message_delete",
     message.author?.id, "Channel #" + message.channel?.name + ": " + content);
 });
 
@@ -1976,7 +1992,7 @@ client.on("guildMemberRemove", member => {
     (member.user?.tag || member.id) + " left the server");
 });
 
-client.on("guildMemberUpdate", (oldMember, newMember) => {
+client.on("guildMemberUpdate", async (oldMember, newMember) => {
   if (!isConfiguredGuild(newMember.guild)) return;
   const changes = [];
   const oldRoles = new Set(oldMember.roles.cache.keys());
@@ -1989,16 +2005,21 @@ client.on("guildMemberUpdate", (oldMember, newMember) => {
     changes.push("Nickname: " + (oldMember.nickname || oldMember.user.username) +
       " → " + (newMember.nickname || newMember.user.username));
   }
-  if (changes.length) logAction(newMember.guild.id, client.user.id, "member_update", newMember.id, changes.join("\n"));
+  if (changes.length) {
+    const eventType = added.length || removed.length ? AuditLogEvent.MemberRoleUpdate : AuditLogEvent.MemberUpdate;
+    const actorId = await findAuditExecutor(newMember.guild, eventType, newMember.id);
+    logAction(newMember.guild.id, actorId || "system", "member_update", newMember.id, changes.join("\n"));
+  }
 });
 
-client.on("channelCreate", channel => {
+client.on("channelCreate", async channel => {
   if (!isConfiguredGuild(channel.guild)) return;
-  logAction(channel.guild.id, client.user.id, "channel_create", channel.id,
+  const actorId = await findAuditExecutor(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
+  logAction(channel.guild.id, actorId || "system", "channel_create", channel.id,
     "Created #" + channel.name);
 });
 
-client.on("channelUpdate", (oldChannel, newChannel) => {
+client.on("channelUpdate", async (oldChannel, newChannel) => {
   if (!isConfiguredGuild(newChannel.guild)) return;
   const changes = [];
   if (oldChannel.name !== newChannel.name) changes.push("Name: " + oldChannel.name + " → " + newChannel.name);
@@ -2007,21 +2028,23 @@ client.on("channelUpdate", (oldChannel, newChannel) => {
   if (changes.length) logAction(newChannel.guild.id, client.user.id, "channel_update", newChannel.id, changes.join("\n"));
 });
 
-client.on("channelDelete", channel => {
+client.on("channelDelete", async channel => {
   if (!isConfiguredGuild(channel.guild)) return;
   const ticket = getTicket(channel.id);
   if (ticket && ticket.status !== "deleted") {
     statements.updateTicketStatus.run("deleted", Date.now(), channel.id);
   }
-  logAction(channel.guild.id, client.user.id, "channel_delete", channel.id, "Deleted #" + channel.name);
+  const actorId = await findAuditExecutor(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
+  logAction(channel.guild.id, actorId || "system", "channel_delete", channel.id, "Deleted #" + channel.name);
 });
 
-client.on("roleCreate", role => {
+client.on("roleCreate", async role => {
   if (!isConfiguredGuild(role.guild)) return;
-  logAction(role.guild.id, client.user.id, "role_create", role.id, "Created role " + role.name);
+  const actorId = await findAuditExecutor(role.guild, AuditLogEvent.RoleCreate, role.id);
+  logAction(role.guild.id, actorId || "system", "role_create", role.id, "Created role " + role.name);
 });
 
-client.on("roleUpdate", (oldRole, newRole) => {
+client.on("roleUpdate", async (oldRole, newRole) => {
   if (!isConfiguredGuild(newRole.guild)) return;
   const changes = [];
   if (oldRole.name !== newRole.name) changes.push("Name: " + oldRole.name + " → " + newRole.name);
@@ -2030,19 +2053,22 @@ client.on("roleUpdate", (oldRole, newRole) => {
   if (changes.length) logAction(newRole.guild.id, client.user.id, "role_update", newRole.id, changes.join("\n"));
 });
 
-client.on("roleDelete", role => {
+client.on("roleDelete", async role => {
   if (!isConfiguredGuild(role.guild)) return;
-  logAction(role.guild.id, client.user.id, "role_delete", role.id, "Deleted role " + role.name);
+  const actorId = await findAuditExecutor(role.guild, AuditLogEvent.RoleDelete, role.id);
+  logAction(role.guild.id, actorId || "system", "role_delete", role.id, "Deleted role " + role.name);
 });
 
-client.on("guildBanAdd", ban => {
+client.on("guildBanAdd", async ban => {
   if (!isConfiguredGuild(ban.guild)) return;
-  logAction(ban.guild.id, client.user.id, "member_ban", ban.user.id, "Banned " + ban.user.tag);
+  const actorId = await findAuditExecutor(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
+  logAction(ban.guild.id, actorId || "system", "member_ban", ban.user.id, "Banned " + ban.user.tag);
 });
 
-client.on("guildBanRemove", ban => {
+client.on("guildBanRemove", async ban => {
   if (!isConfiguredGuild(ban.guild)) return;
-  logAction(ban.guild.id, client.user.id, "member_unban", ban.user.id, "Unbanned " + ban.user.tag);
+  const actorId = await findAuditExecutor(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id);
+  logAction(ban.guild.id, actorId || "system", "member_unban", ban.user.id, "Unbanned " + ban.user.tag);
 });
 
 client.on("interactionCreate", async interaction => {
