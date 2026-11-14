@@ -16,6 +16,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  AttachmentBuilder,
   MessageFlags
 } = require("discord.js");
 const { randomInt } = require("node:crypto");
@@ -267,10 +268,8 @@ const { statements } = database;
 
 // Slash command definitions
 const slashCommands = (() => {
-const { SlashCommandBuilder, ChannelType } = require("discord.js");
-
-const commands = [
-  new SlashCommandBuilder().setName("ban").setDescription("Ban a member")
+  const { SlashCommandBuilder, ChannelType } = require("discord.js");
+  const commands = [  new SlashCommandBuilder().setName("ban").setDescription("Ban a member")
     .addUserOption(o => o.setName("user").setDescription("Member to ban").setRequired(true))
     .addStringOption(o => o.setName("reason").setDescription("Reason").setMaxLength(500)),
   new SlashCommandBuilder().setName("unban").setDescription("Unban a user")
@@ -338,9 +337,6 @@ const commands = [
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
   new SlashCommandBuilder().setName("serverinfo").setDescription("Show server information"),
   new SlashCommandBuilder().setName("ping").setDescription("Show bot latency"),
-  new SlashCommandBuilder().setName("maintenance").setDescription("Enable or disable server maintenance")
-    .addBooleanOption(o => o.setName("enabled").setDescription("Enable maintenance mode").setRequired(true))
-    .addStringOption(o => o.setName("reason").setDescription("Maintenance notice").setMaxLength(500)),
   new SlashCommandBuilder().setName("lock").setDescription("Lock this text channel"),
   new SlashCommandBuilder().setName("unlock").setDescription("Unlock this text channel"),
   new SlashCommandBuilder().setName("slowmode").setDescription("Set channel slowmode")
@@ -350,49 +346,14 @@ const commands = [
   new SlashCommandBuilder().setName("notify").setDescription("Send a notification, optionally pinging a role")
     .addStringOption(o => o.setName("message").setDescription("Notification text").setMaxLength(2000).setRequired(true))
     .addRoleOption(o => o.setName("role").setDescription("Role to notify")),
-  new SlashCommandBuilder().setName("reminder").setDescription("Set a personal reminder")
-    .addStringOption(o => o.setName("duration").setDescription("Examples: 10m, 2h, 1d").setRequired(true))
-    .addStringOption(o => o.setName("message").setDescription("What should I remind you about?").setMaxLength(1000).setRequired(true)),
-  new SlashCommandBuilder().setName("welcome").setDescription("Configure the welcome channel and message")
-    .addChannelOption(o => o.setName("channel").setDescription("Welcome channel").addChannelTypes(ChannelType.GuildText).setRequired(true))
-    .addStringOption(o => o.setName("message").setDescription("Use {user}, {username}, {server}, {count}").setMaxLength(1500).setRequired(true)),
-  new SlashCommandBuilder().setName("autorole").setDescription("Set the automatic role for new members")
-    .addRoleOption(o => o.setName("role").setDescription("Role assigned to new members").setRequired(true)),
-  new SlashCommandBuilder().setName("suggestions").setDescription("Set the suggestions channel")
-    .addChannelOption(o => o.setName("channel").setDescription("Suggestions channel").addChannelTypes(ChannelType.GuildText).setRequired(true)),
-  new SlashCommandBuilder().setName("suggest").setDescription("Submit a server suggestion")
-    .addStringOption(o => o.setName("content").setDescription("Your suggestion").setMinLength(5).setMaxLength(1500).setRequired(true)),
-  new SlashCommandBuilder().setName("suggestionreview").setDescription("Review a submitted suggestion")
-    .addIntegerOption(o => o.setName("id").setDescription("Suggestion ID").setRequired(true))
-    .addStringOption(o => o.setName("status").setDescription("Review decision").setRequired(true).addChoices(
-      { name: "Considering", value: "considering" }, { name: "Approved", value: "approved" }, { name: "Rejected", value: "rejected" }
-    )),
-  new SlashCommandBuilder().setName("applications").setDescription("Set the staff applications channel")
-    .addChannelOption(o => o.setName("channel").setDescription("Applications channel").addChannelTypes(ChannelType.GuildText).setRequired(true)),
-  new SlashCommandBuilder().setName("apply").setDescription("Submit a staff application"),
   new SlashCommandBuilder().setName("ticketconfig").setDescription("Configure ticket transcripts and category channels")
     .addChannelOption(o => o.setName("transcriptchannel").setDescription("Transcript channel").addChannelTypes(ChannelType.GuildText))
     .addChannelOption(o => o.setName("supportcategory").setDescription("Support category").addChannelTypes(ChannelType.GuildCategory))
     .addChannelOption(o => o.setName("complaintcategory").setDescription("Complaint category").addChannelTypes(ChannelType.GuildCategory))
     .addChannelOption(o => o.setName("partnershipcategory").setDescription("Partnership category").addChannelTypes(ChannelType.GuildCategory)),
-  new SlashCommandBuilder().setName("antiswear").setDescription("Manage the blocked-word filter")
-    .addStringOption(o => o.setName("action").setDescription("What to do").setRequired(true).addChoices(
-      { name: "Add word", value: "add" }, { name: "Remove word", value: "remove" }, { name: "List words", value: "list" }
-    ))
-    .addStringOption(o => o.setName("word").setDescription("Word to add or remove").setMaxLength(80)),
-  new SlashCommandBuilder().setName("level").setDescription("Show a member's level")
-    .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
-  new SlashCommandBuilder().setName("leaderboard").setDescription("Show the server XP leaderboard"),
-  new SlashCommandBuilder().setName("invites").setDescription("Show invite counts")
-    .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
-  new SlashCommandBuilder().setName("achievements").setDescription("Show unlocked achievements")
-    .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
-    new SlashCommandBuilder().setName("logs").setDescription("View logs or set the log channel")
-      .addChannelOption(o => o.setName("channel").setDescription("Channel for automatic logs").addChannelTypes(ChannelType.GuildText))
-];
 
-const disabledCommands = new Set(["welcome","autorole","suggestions","suggest","suggestionreview","applications","apply","antiswear","level","leaderboard","invites","achievements","maintenance","reminder"]);
-  return commands.filter(command => !disabledCommands.has(command.name));
+  ];
+  return commands;
 })();
 
 // Shared helpers
@@ -435,7 +396,6 @@ const PREFIX_COMMANDS = [
   ["مساعدة", "help"],
   ["معلومات", "userinfo"],
   ["بينق", "ping"],
-  ["صيانة", "maintenance"],
   ["قفل", "lock"],
   ["قفل الروم", "lock"],
   ["فتح", "unlock"],
@@ -444,32 +404,16 @@ const PREFIX_COMMANDS = [
   ["اعلان", "announce"],
   ["إعلان", "announce"],
   ["تنبيه", "notify"],
-  ["تذكير", "reminder"],
-  ["قناة ترحيب", "welcome"],
-  ["رتبة تلقائية", "autorole"],
-  ["قناة اقتراحات", "suggestions"],
-  ["اقتراح", "suggest"],
-  ["مراجعة اقتراح", "suggestionreview"],
-  ["قناة تقديمات", "applications"],
-  ["تقديم", "apply"],
   ["اعداد التكت", "ticketconfig"],
   ["إعداد التكت", "ticketconfig"],
-  ["فلترة كلمات", "antiswear"],
-  ["مستوى", "level"],
-  ["المتصدرين", "leaderboard"],
-  ["دعوات", "invites"],
-  ["انجازات", "achievements"],
-  ["إنجازات", "achievements"],
   ["لوق", "logs"]
 ].sort((a, b) => b[0].length - a[0].length);
 
-const disabledPrefixCommands = new Set(["welcome","autorole","suggestions","suggest","suggestionreview","applications","apply","antiswear","level","leaderboard","invites","achievements","maintenance","reminder"]);
 
 function resolvePrefixCommand(input) {
   const normalized = input.trim().toLocaleLowerCase("ar");
   for (const [label, command] of PREFIX_COMMANDS) {
     if (normalized === label || normalized.startsWith(label + " ")) {
-      if (disabledPrefixCommands.has(command)) return null;
       return { command, consumed: label.split(/\s+/).length };
     }
   }
@@ -539,326 +483,78 @@ const { assertCanModerateMember, assertCanManageRole } = permissions;
 
 // Supporting systems used by the bot
 const community = (() => {
-const {
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-  ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder,
-  PermissionFlagsBits
-} = require("discord.js");
-const { randomInt } = require("node:crypto");
-const { statements } = database;
+  const setting = key => statements.getSetting.get(key)?.value ?? "";
+  const setSetting = (key, value) => statements.setSetting.run(key, String(value ?? ""));
 
-const inviteCache = new Map();
-const setting = key => statements.getSetting.get(key)?.value ?? "";
-const setSetting = (key, value) => statements.setSetting.run(key, String(value ?? ""));
-
-function unlock(guildId, userId, key, logAction) {
-  const result = statements.unlockAchievement.run(guildId, userId, key, Date.now());
-  if (result.changes) logAction(guildId, userId, "achievement_unlocked", userId, key);
-  return Boolean(result.changes);
-}
-
-async function cacheInvites(guild) {
-  try {
-    const invites = await guild.invites.fetch();
-    inviteCache.set(guild.id, new Map(invites.map(x => [x.code, x.uses ?? 0])));
-  } catch (error) {
-    console.warn("Invite tracking unavailable; check Manage Server permission:", error.message);
-  }
-}
-
-async function handleInviteCreate(invite) {
-  if (!invite.guild) return;
-  const map = inviteCache.get(invite.guild.id) ?? new Map();
-  map.set(invite.code, invite.uses ?? 0);
-  inviteCache.set(invite.guild.id, map);
-}
-
-async function handleInviteDelete(invite) {
-  if (!invite.guild) return;
-  const map = inviteCache.get(invite.guild.id);
-  map?.delete(invite.code);
-}
-
-async function handleMemberAdd(member, logAction) {
-  const roleId = setting("autorole_id");
-  if (roleId) {
-    const role = await member.guild.roles.fetch(roleId).catch(() => null);
-    if (role && !role.managed && role.id !== member.guild.id && role.position < (member.guild.members.me?.roles.highest.position ?? -1)) {
-      await member.roles.add(role, "Configured automatic member role").catch(error => {
-        console.error("Auto-role assignment failed:", error);
-        logAction(member.guild.id, member.client.user.id, "autorole_failed", member.id, error.message);
+  async function createTranscript(channel, ticket, guild, logAction) {
+    const messages = [];
+    let before;
+  
+    while (true) {
+      const page = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+      if (!page.size) break;
+  
+      messages.push(...page.values());
+      if (page.size < 100) break;
+      if (messages.length >= 10000) {
+        throw new Error("This ticket has more than 10,000 messages. The transcript was not marked as complete.");
+      }
+  
+      before = page.last().id;
+    }
+  
+    const ordered = messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+    const lines = ordered.map(message => {
+      const attachments = [...message.attachments.values()].map(file => file.url);
+      const embeds = message.embeds.map(embed => embed.title || embed.description || "[Embed]");
+      const parts = [
+        message.content || "",
+        ...attachments.map(url => "[Attachment] " + url),
+        ...embeds.map(value => "[Embed] " + value)
+      ].filter(Boolean);
+      const body = parts.join("\n") || "[Empty message]";
+      return "[" + new Date(message.createdTimestamp).toISOString() + "] " +
+        message.author.tag + " (" + message.author.id + "):\n" + body;
+    });
+  
+    const content = "Ticket #" + ticket.number + " | " + guild.name +
+      "\nOwner: " + ticket.user_id +
+      "\nMessages: " + ordered.length +
+      "\n\n" + lines.join("\n\n");
+  
+    statements.saveTranscript.run(ticket.id, guild.id, content, Date.now());
+  
+    const transcriptChannelId = setting("transcript_channel_id");
+    if (transcriptChannelId) {
+      const target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
+      if (!target?.isTextBased()) {
+        throw new Error("The configured transcript channel is unavailable.");
+      }
+  
+      const buffer = Buffer.from(content, "utf8");
+      const chunkSize = 7 * 1024 * 1024;
+      const files = [];
+  
+      for (let offset = 0, part = 1; offset < buffer.length; offset += chunkSize, part += 1) {
+        const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, buffer.length));
+        const suffix = buffer.length > chunkSize ? "-part-" + part : "";
+        files.push(new AttachmentBuilder(chunk, {
+          name: "ticket-" + ticket.number + "-transcript" + suffix + ".txt"
+        }));
+      }
+  
+      await target.send({
+        content: "Transcript for ticket #" + ticket.number + " (" + ordered.length + " messages).",
+        files,
+        allowedMentions: { parse: [] }
       });
     }
+  
+    logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id,
+      "Ticket #" + ticket.number + " — " + ordered.length + " messages");
   }
 
-  const welcomeChannelId = setting("welcome_channel_id");
-  if (welcomeChannelId) {
-    const channel = await member.guild.channels.fetch(welcomeChannelId).catch(() => null);
-    if (channel?.isTextBased()) {
-      const template = setting("welcome_message") || "Welcome {user} to {server}!";
-      const content = template.replaceAll("{user}", "<@" + member.id + ">")
-        .replaceAll("{username}", member.user.username)
-        .replaceAll("{server}", member.guild.name)
-        .replaceAll("{count}", String(member.guild.memberCount));
-      await channel.send({ content, allowedMentions: { users: [member.id] } }).catch(error => console.error("Welcome message failed:", error));
-    }
-  }
-
-  try {
-    const previous = inviteCache.get(member.guild.id) ?? new Map();
-    const invites = await member.guild.invites.fetch();
-    const used = invites.find(x => (x.uses ?? 0) > (previous.get(x.code) ?? 0));
-    inviteCache.set(member.guild.id, new Map(invites.map(x => [x.code, x.uses ?? 0])));
-    if (used?.inviter) {
-      statements.addInvite.run(member.guild.id, used.inviter.id);
-      const total = statements.getInvites.get(member.guild.id, used.inviter.id)?.uses ?? 0;
-      if (total >= 5) unlock(member.guild.id, used.inviter.id, "five_invites", logAction);
-      if (total >= 10) unlock(member.guild.id, used.inviter.id, "ten_invites", logAction);
-      logAction(member.guild.id, used.inviter.id, "invite_used", member.id, "Invite " + used.code);
-    }
-  } catch (error) {
-    console.warn("Could not identify invite used by new member:", error.message);
-  }
-}
-
-function checkAchievements(guildId, userId, row, logAction) {
-  if (row.messages >= 1) unlock(guildId, userId, "first_message", logAction);
-  if (row.messages >= 100) unlock(guildId, userId, "one_hundred_messages", logAction);
-  if (row.messages >= 500) unlock(guildId, userId, "five_hundred_messages", logAction);
-  if (row.level >= 5) unlock(guildId, userId, "level_five", logAction);
-  if (row.level >= 10) unlock(guildId, userId, "level_ten", logAction);
-}
-
-async function handleMessage(message, logAction) {
-  if (!message.guild || message.guild.id !== process.env.GUILD_ID || message.author.bot) return false;
-  const blocked = statements.getBlockedWords.all(message.guild.id).map(x => x.word.toLocaleLowerCase("en-US"));
-  const tokens = message.content.toLocaleLowerCase("en-US").split(/[^\p{L}\p{N}]+/u);
-  const match = blocked.find(word => word && tokens.includes(word));
-  if (match) {
-    await message.delete().catch(() => {});
-    const warning = statements.addWarning.run(message.guild.id, message.author.id, message.client.user.id, "Automatic anti-swear filter", Date.now());
-    const warningId = Number(warning.lastInsertRowid);
-    if (message.member?.moderatable) await message.member.timeout(15 * 60 * 1000, "Automatic anti-swear filter").catch(() => {});
-    await message.author.send("Your message in " + message.guild.name + " was removed by the word filter. Warning #" + warningId + ". A 15-minute timeout was applied where possible.").catch(() => {});
-    logAction(message.guild.id, message.client.user.id, "anti_swear", message.author.id, "Warning #" + warningId + "; matched configured word");
-    return true;
-  }
-
-  const counted = statements.recordMessage.get(message.guild.id, message.author.id);
-  const previous = statements.getLevel.get(message.guild.id, message.author.id);
-  if (previous && Date.now() - previous.last_xp_at < 60_000) {
-    checkAchievements(message.guild.id, message.author.id, counted, logAction);
-    return;
-  }
-  const row = statements.addXp.get(message.guild.id, message.author.id, randomInt(10, 21), Date.now());
-  const level = Math.floor(Math.sqrt(row.xp / 100));
-  if (level !== row.level) {
-    statements.setLevel.run(level, message.guild.id, message.author.id);
-    if (level > row.level) {
-      logAction(message.guild.id, message.client.user.id, "level_up", message.author.id, "Reached level " + level);
-      await message.channel.send({ content: "🎉 <@" + message.author.id + "> reached level **" + level + "**!", allowedMentions: { users: [message.author.id] } }).catch(() => {});
-    }
-  }
-  checkAchievements(message.guild.id, message.author.id, { ...row, messages: counted.messages, level }, logAction);
-  return false;
-}
-
-async function submitSuggestion(guild, user, content, logAction) {
-  if (typeof content !== "string" || content.trim().length < 5 || content.length > 1500) throw new Error("Suggestion must contain 5 to 1500 characters.");
-  const channelId = setting("suggestion_channel_id");
-  if (!channelId) throw new Error("Suggestions are not configured. Ask staff to set the suggestions channel.");
-  const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased()) throw new Error("The configured suggestions channel is unavailable.");
-  const result = statements.createSuggestion.run(guild.id, channel.id, user.id, content.trim(), Date.now());
-  const id = Number(result.lastInsertRowid);
-  const embed = new EmbedBuilder().setColor(0x3498db).setTitle("Suggestion #" + id).setDescription(content.trim())
-    .addFields({ name: "Status", value: "Pending", inline: true }, { name: "Submitted by", value: "<@" + user.id + ">", inline: true })
-    .setFooter({ text: "Vote with the buttons below" }).setTimestamp();
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("suggestion:up:" + id).setLabel("👍 0").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("suggestion:down:" + id).setLabel("👎 0").setStyle(ButtonStyle.Danger)
-  );
-  try {
-    const sent = await channel.send({ embeds: [embed], components: [row], allowedMentions: { users: [user.id] } });
-    statements.setSuggestionMessage.run(sent.id, id);
-  } catch (error) {
-    statements.deleteSuggestion.run(id);
-    throw error;
-  }
-  logAction(guild.id, user.id, "suggestion_create", String(id), content.trim().slice(0, 300));
-  return id;
-}
-
-async function submitApplication(guild, user, answers, logAction) {
-  const channelId = setting("application_channel_id");
-  if (!channelId) throw new Error("Applications are not configured. Ask staff to set the applications channel.");
-  const clean = answers.map(x => String(x ?? "").trim());
-  if (clean.length !== 4 || clean.some(x => !x || x.length > 1000)) throw new Error("All four application answers are required (maximum 1000 characters each).");
-  const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased()) throw new Error("The configured applications channel is unavailable.");
-  const result = statements.createApplication.run(guild.id, user.id, JSON.stringify(clean), Date.now());
-  const id = Number(result.lastInsertRowid);
-  const embed = new EmbedBuilder().setColor(0x9b59b6).setTitle("Staff Application #" + id)
-    .setDescription(clean.map((answer, i) => "**Question " + (i + 1) + "**\n" + answer).join("\n\n"))
-    .addFields({ name: "Applicant", value: "<@" + user.id + ">", inline: true }, { name: "Status", value: "Pending", inline: true }).setTimestamp();
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("application:approve:" + id).setLabel("Approve").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("application:reject:" + id).setLabel("Reject").setStyle(ButtonStyle.Danger)
-  );
-  try {
-    const sent = await channel.send({ embeds: [embed], components: [row], allowedMentions: { users: [user.id] } });
-    statements.setApplicationMessage.run(channel.id, sent.id, id);
-  } catch (error) {
-    logAction(guild.id, user.id, "application_delivery_failed", String(id), error.message);
-    throw new Error("Application #" + id + " was saved, but staff notification failed. Contact staff with this ID.");
-  }
-  logAction(guild.id, user.id, "application_submit", String(id), "Staff application submitted");
-  return id;
-}
-
-async function openApplication(interaction) {
-  const modal = new ModalBuilder().setCustomId("application:submit").setTitle("Staff Application");
-  const prompts = [
-    ["application_age", "How old are you?"],
-    ["application_timezone", "What is your timezone?"],
-    ["application_experience", "What experience do you have?"],
-    ["application_reason", "Why do you want to join the staff team?"]
-  ];
-  modal.addComponents(...prompts.map(([id, label]) => new ActionRowBuilder().addComponents(
-    new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000)
-  )));
-  await interaction.showModal(modal);
-}
-
-async function handleInteraction(interaction, logAction) {
-  if (interaction.isModalSubmit() && interaction.customId === "application:submit") {
-    if (!interaction.guild || interaction.guild.id !== process.env.GUILD_ID) return true;
-    const answers = ["application_age", "application_timezone", "application_experience", "application_reason"].map(id => interaction.fields.getTextInputValue(id));
-    const id = await submitApplication(interaction.guild, interaction.user, answers, logAction);
-    await interaction.reply({ content: "Your application #" + id + " has been submitted.", ephemeral: true });
-    return true;
-  }
-  if (!interaction.isButton()) return false;
-  const [kind, action, rawId] = interaction.customId.split(":");
-  const id = Number(rawId);
-  if (!Number.isInteger(id) || !interaction.guild || interaction.guild.id !== process.env.GUILD_ID) return false;
-
-  if (kind === "suggestion" && ["up", "down"].includes(action)) {
-    const suggestion = statements.getSuggestionChannel.get(id, interaction.guild.id);
-    if (!suggestion || suggestion.message_id !== interaction.message.id) {
-      await interaction.reply({ content: "Suggestion not found.", ephemeral: true });
-      return true;
-    }
-    statements.voteSuggestion.run(id, interaction.user.id, action === "up" ? 1 : -1);
-    const votes = statements.getSuggestionVotes.get(id);
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("suggestion:up:" + id).setLabel("👍 " + (votes.upvotes ?? 0)).setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("suggestion:down:" + id).setLabel("👎 " + (votes.downvotes ?? 0)).setStyle(ButtonStyle.Danger)
-    );
-    await interaction.update({ components: [row] });
-    return true;
-  }
-
-  if (kind === "application" && ["approve", "reject"].includes(action)) {
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({ content: "You need Manage Server permission to review applications.", ephemeral: true });
-      return true;
-    }
-    const application = statements.getApplication.get(id, interaction.guild.id);
-    if (!application || application.message_id !== interaction.message.id) {
-      await interaction.reply({ content: "Application not found.", ephemeral: true });
-      return true;
-    }
-    const status = action === "approve" ? "approved" : "rejected";
-    const updated = statements.reviewApplication.run(status, interaction.user.id, Date.now(), id);
-    if (!updated.changes) {
-      await interaction.reply({ content: "This application was already reviewed.", ephemeral: true });
-      return true;
-    }
-    const old = interaction.message.embeds[0];
-    const embed = EmbedBuilder.from(old).setColor(action === "approve" ? 0x2ecc71 : 0xe74c3c)
-      .setFields(...old.fields.filter(x => x.name !== "Status"), { name: "Status", value: status.toUpperCase(), inline: true }, { name: "Reviewed by", value: "<@" + interaction.user.id + ">", inline: true });
-    await interaction.update({ embeds: [embed], components: [] });
-    const applicant = await interaction.client.users.fetch(application.user_id).catch(() => null);
-    await applicant?.send("Your staff application #" + id + " in " + interaction.guild.name + " was " + status + ".").catch(() => {});
-    logAction(interaction.guild.id, interaction.user.id, "application_" + status, application.user_id, "Application #" + id);
-    return true;
-  }
-  return false;
-}
-
-async function createTranscript(channel, ticket, guild, logAction) {
-  const messages = [];
-  let before;
-
-  while (true) {
-    const page = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
-    if (!page.size) break;
-
-    messages.push(...page.values());
-    if (page.size < 100) break;
-    if (messages.length >= 10000) {
-      throw new Error("This ticket has more than 10,000 messages. The transcript was not marked as complete.");
-    }
-
-    before = page.last().id;
-  }
-
-  const ordered = messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-  const lines = ordered.map(message => {
-    const attachments = [...message.attachments.values()].map(file => file.url);
-    const embeds = message.embeds.map(embed => embed.title || embed.description || "[Embed]");
-    const parts = [
-      message.content || "",
-      ...attachments.map(url => "[Attachment] " + url),
-      ...embeds.map(value => "[Embed] " + value)
-    ].filter(Boolean);
-    const body = parts.join("\n") || "[Empty message]";
-    return "[" + new Date(message.createdTimestamp).toISOString() + "] " +
-      message.author.tag + " (" + message.author.id + "):\n" + body;
-  });
-
-  const content = "Ticket #" + ticket.number + " | " + guild.name +
-    "\nOwner: " + ticket.user_id +
-    "\nMessages: " + ordered.length +
-    "\n\n" + lines.join("\n\n");
-
-  statements.saveTranscript.run(ticket.id, guild.id, content, Date.now());
-
-  const transcriptChannelId = setting("transcript_channel_id");
-  if (transcriptChannelId) {
-    const target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
-    if (!target?.isTextBased()) {
-      throw new Error("The configured transcript channel is unavailable.");
-    }
-
-    const buffer = Buffer.from(content, "utf8");
-    const chunkSize = 7 * 1024 * 1024;
-    const files = [];
-
-    for (let offset = 0, part = 1; offset < buffer.length; offset += chunkSize, part += 1) {
-      const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, buffer.length));
-      const suffix = buffer.length > chunkSize ? "-part-" + part : "";
-      files.push(new AttachmentBuilder(chunk, {
-        name: "ticket-" + ticket.number + "-transcript" + suffix + ".txt"
-      }));
-    }
-
-    await target.send({
-      content: "Transcript for ticket #" + ticket.number + " (" + ordered.length + " messages).",
-      files,
-      allowedMentions: { parse: [] }
-    });
-  }
-
-  logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id,
-    "Ticket #" + ticket.number + " — " + ordered.length + " messages");
-}
-  return {
-    setting, setSetting, cacheInvites, handleInviteCreate, handleInviteDelete,
-    handleMemberAdd, handleMessage, submitSuggestion, submitApplication,
-    openApplication, handleInteraction, createTranscript
-  };
+  return { setting, setSetting, createTranscript };
 })();
 
 // Main bot
@@ -916,10 +612,6 @@ function logAction(guildId, actorId, action, targetId, details) {
     .catch(error => console.error("Could not send an automatic log:", error));
 }
 
-function isInConfiguredGuild(guild) {
-  return guild?.id === GUILD_ID;
-}
-
 function hasPermission(member, permission) {
   return Boolean(member?.permissions?.has(permission));
 }
@@ -932,66 +624,6 @@ function requirePermission(member, permission, label) {
 
 function getMember(guild, user) {
   return guild.members.fetch(user.id);
-}
-
-const reminderTimers = new Map();
-
-async function deliverReminder(reminder) {
-  let delivered = false;
-  let deliveryError = null;
-  try {
-    const channel = await client.channels.fetch(reminder.channel_id).catch(() => null);
-    if (channel?.isTextBased()) {
-      await channel.send({ content: '<@' + reminder.user_id + '> ⏰ Reminder: ' + reminder.message, allowedMentions: { users: [reminder.user_id] } });
-      delivered = true;
-    }
-  } catch (error) {
-    deliveryError = error;
-  }
-  if (!delivered) {
-    try {
-      const recipient = await client.users.fetch(reminder.user_id);
-      await recipient.send('⏰ Reminder: ' + reminder.message);
-      delivered = true;
-    } catch (error) {
-      deliveryError = error;
-    }
-  }
-  if (delivered) {
-    statements.completeReminder.run("sent", reminder.id);
-    logAction(reminder.guild_id, reminder.user_id, "reminder_sent", reminder.user_id, "Reminder #" + reminder.id);
-  } else {
-    console.error("Failed to deliver reminder #" + reminder.id + ":", deliveryError);
-    statements.completeReminder.run("failed", reminder.id);
-  }
-  reminderTimers.delete(reminder.id);
-}
-
-function scheduleReminder(reminder) {
-  if (reminderTimers.has(reminder.id)) clearTimeout(reminderTimers.get(reminder.id));
-  const delay = Math.max(0, reminder.due_at - Date.now());
-  const timer = setTimeout(() => {
-    if (reminder.due_at > Date.now()) return scheduleReminder(reminder);
-    deliverReminder(reminder);
-  }, Math.min(delay, 2_147_000_000));
-  timer.unref?.();
-  reminderTimers.set(reminder.id, timer);
-}
-
-async function createReminder(context, durationText, message) {
-  const duration = parseDuration(durationText);
-  if (!duration || duration < 60_000 || duration > 30 * 24 * 60 * 60 * 1000) {
-    throw new Error("Reminder duration must be between 1 minute and 30 days (examples: 10m, 2h, 1d).");
-  }
-  if (typeof message !== "string" || !message.trim() || message.length > 1000) {
-    throw new Error("Reminder text must contain between 1 and 1000 characters.");
-  }
-  const dueAt = Date.now() + duration;
-  const result = statements.createReminder.run(context.guild.id, context.user.id, context.channel.id, message.trim(), dueAt, Date.now());
-  const id = Number(result.lastInsertRowid);
-  scheduleReminder({ id, guild_id: context.guild.id, user_id: context.user.id, channel_id: context.channel.id, message: message.trim(), due_at: dueAt });
-  logAction(context.guild.id, context.user.id, "reminder_create", context.user.id, "Reminder #" + id);
-  await reply(context, "⏰ Reminder #" + id + " set for <t:" + Math.floor(dueAt / 1000) + ":F>.");
 }
 
 async function reply(context, content, ephemeral = true) {
@@ -1403,16 +1035,6 @@ async function execute(context, name, data = {}) {
   }
 
   switch (name) {
-    case "maintenance": {
-      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      const enabled = Boolean(data.enabled);
-      const reason = typeof data.reason === "string" && data.reason.trim() ? data.reason.trim().slice(0, 500) : "The server is currently under maintenance.";
-      statements.setSetting.run("maintenance_enabled", enabled ? "1" : "0");
-      statements.setSetting.run("maintenance_reason", enabled ? reason : "");
-      logAction(guild.id, user.id, "maintenance", null, enabled ? "Enabled: " + reason : "Disabled");
-      await reply(context, enabled ? "🔧 Bot maintenance mode enabled. " + reason : "✅ Bot maintenance mode disabled.", false);
-      break;
-    }
     case "lock": {
       requirePermission(member, PermissionFlagsBits.ManageChannels, "Manage Channels");
       if (!channel?.isTextBased() || !channel.permissionOverwrites) throw new Error("This command requires a text channel.");
@@ -1461,8 +1083,6 @@ async function execute(context, name, data = {}) {
       await reply(context, "Notification sent.");
       break;
     }
-    case "reminder":
-      return createReminder(context, data.duration, data.message);
     case "clear":
     case "purge": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
@@ -1474,70 +1094,6 @@ async function execute(context, name, data = {}) {
       break;
     }
     case "ticket": return createTicket(context, data.category ?? "support");
-    case "apply": {
-      const answers = data.answers;
-      if (!Array.isArray(answers) || answers.length !== 4) throw new Error("Usage: !تقديم age | timezone | experience | reason");
-      const id = await community.submitApplication(guild, user, answers, logAction);
-      await reply(context, "Your application #" + id + " has been submitted.");
-      break;
-    }
-    case "suggest":
-      return community.submitSuggestion(guild, user, data.content, logAction);
-    case "suggestionreview": {
-      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      const suggestion = statements.getSuggestionChannel.get(data.suggestionId, guild.id);
-      if (!suggestion) throw new Error("Suggestion not found.");
-      if (!["considering", "approved", "rejected"].includes(data.status)) throw new Error("Choose considering, approved, or rejected.");
-      const targetChannel = await guild.channels.fetch(suggestion.channel_id).catch(() => null);
-      if (!targetChannel?.isTextBased() || !suggestion.message_id) throw new Error("The suggestion message is unavailable.");
-      const targetMessage = await targetChannel.messages.fetch(suggestion.message_id).catch(() => null);
-      if (!targetMessage?.embeds?.[0]) throw new Error("The suggestion message is unavailable.");
-      const colors = { considering: 0xf1c40f, approved: 0x2ecc71, rejected: 0xe74c3c };
-      const oldEmbed = targetMessage.embeds[0];
-      const fields = oldEmbed.fields.filter(field => field.name !== "Status");
-      fields.unshift({ name: "Status", value: data.status.toUpperCase(), inline: true });
-      await targetMessage.edit({ embeds: [EmbedBuilder.from(oldEmbed).setColor(colors[data.status]).setFields(fields)] });
-      statements.updateSuggestionStatus.run(data.status, data.suggestionId, guild.id);
-      logAction(guild.id, user.id, "suggestion_" + data.status, String(data.suggestionId), "Suggestion reviewed");
-      await reply(context, "Suggestion #" + data.suggestionId + " marked as " + data.status + ".", false);
-      break;
-    }
-    case "welcome": {
-      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      if (!data.channel?.isTextBased()) throw new Error("Choose a valid welcome text channel.");
-      if (!data.message?.trim() || data.message.length > 1500) throw new Error("Welcome message must contain 1 to 1500 characters.");
-      community.setSetting("welcome_channel_id", data.channel.id);
-      community.setSetting("welcome_message", data.message);
-      logAction(guild.id, user.id, "welcome_config", data.channel.id, "Welcome message configured");
-      await reply(context, "Welcome messages configured.", false);
-      break;
-    }
-    case "autorole": {
-      requirePermission(member, PermissionFlagsBits.ManageRoles, "Manage Roles");
-      const role = data.role;
-      if (!role || role.managed || role.id === guild.id || role.position >= guild.members.me.roles.highest.position) throw new Error("Choose a normal role below the bot's highest role.");
-      assertCanManageRole({ actor: member, target: member, bot: guild.members.me, role, everyoneRoleId: guild.id, guild });
-      community.setSetting("autorole_id", role.id);
-      logAction(guild.id, user.id, "autorole_config", role.id, role.name);
-      await reply(context, "Automatic role configured: **" + role.name + "**.", false);
-      break;
-    }
-    case "suggestions": {
-      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      if (!data.channel?.isTextBased()) throw new Error("Choose a valid suggestions text channel.");
-      community.setSetting("suggestion_channel_id", data.channel.id);
-      logAction(guild.id, user.id, "suggestions_config", data.channel.id, "Suggestions channel configured");
-      await reply(context, "Suggestions channel configured.", false);
-      break;
-    }
-    case "applications": {
-      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      if (!data.channel?.isTextBased()) throw new Error("Choose a valid applications text channel.");
-      community.setSetting("application_channel_id", data.channel.id);
-      logAction(guild.id, user.id, "applications_config", data.channel.id, "Applications channel configured");
-      await reply(context, "Applications channel configured.", false);
-      break;
-    }
     case "ticketconfig": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       const entries = [
@@ -1554,57 +1110,6 @@ async function execute(context, name, data = {}) {
       for (const [key, value] of entries) if (value) community.setSetting(key, value.id);
       logAction(guild.id, user.id, "ticket_config", null, entries.filter(x => x[1]).map(x => x[0]).join(", "));
       await reply(context, "Ticket settings updated.", false);
-      break;
-    }
-    case "antiswear": {
-      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      const action = data.action;
-      const word = typeof data.word === "string" ? data.word.trim().toLocaleLowerCase("en-US") : "";
-      if (action === "list") {
-        const words = statements.getBlockedWords.all(guild.id).map(x => x.word);
-        await reply(context, words.length ? "Blocked words: " + words.join(", ") : "The blocked-word list is empty.");
-        break;
-      }
-      if (!word || word.length > 80 || /\s/.test(word)) throw new Error("Provide one word without spaces (maximum 80 characters).");
-      if (action === "add") {
-        statements.addBlockedWord.run(guild.id, word, user.id, Date.now());
-      } else if (action === "remove") {
-        if (!statements.removeBlockedWord.run(guild.id, word).changes) throw new Error("That word is not in the blocked list.");
-      } else throw new Error("Choose add, remove, or list.");
-      logAction(guild.id, user.id, "antiswear_" + action, null, word);
-      await reply(context, action === "add" ? "Added the word to the filter." : "Removed the word from the filter.", false);
-      break;
-    }
-    case "level": {
-      const target = data.target ?? user;
-      const row = statements.getLevel.get(guild.id, target.id);
-      const level = row?.level ?? 0;
-      const xp = row?.xp ?? 0;
-      const currentFloor = 100 * level * level;
-      const nextFloor = 100 * (level + 1) * (level + 1);
-      const progress = Math.max(0, xp - currentFloor);
-      await reply(context, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("Level: " + target.username)
-        .setDescription("**Level:** " + level + "\n**Total XP:** " + xp + "\n**Progress:** " + progress + " / " + (nextFloor - currentFloor))] });
-      break;
-    }
-    case "leaderboard": {
-      const rows = statements.getLeaderboard.all(guild.id);
-      const description = rows.length ? rows.map((row, index) => "**" + (index + 1) + ".** <@" + row.user_id + "> — Level " + row.level + " (" + row.xp + " XP)").join("\n") : "No level data yet.";
-      await reply(context, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("XP Leaderboard").setDescription(description)] });
-      break;
-    }
-    case "invites": {
-      const target = data.target ?? user;
-      const count = statements.getInvites.get(guild.id, target.id)?.uses ?? 0;
-      await reply(context, "<@" + target.id + "> has **" + count + "** tracked invite(s).");
-      break;
-    }
-    case "achievements": {
-      const target = data.target ?? user;
-      const rows = statements.getAchievements.all(guild.id, target.id);
-      const labels = { first_message: "First message", one_hundred_messages: "100 messages", five_hundred_messages: "500 messages", level_five: "Reach level 5", level_ten: "Reach level 10", five_invites: "Invite 5 members", ten_invites: "Invite 10 members" };
-      const description = rows.length ? rows.map(row => "🏆 " + (labels[row.achievement_key] ?? row.achievement_key) + " — <t:" + Math.floor(row.unlocked_at / 1000) + ":d>").join("\n") : "No achievements unlocked yet.";
-      await reply(context, { embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle("Achievements: " + target.username).setDescription(description)] });
       break;
     }
     case "close": return closeTicket(context);
@@ -1739,13 +1244,6 @@ async function execute(context, name, data = {}) {
   }
 }
 
-function parsePrefixArguments(message, commandName) {
-  const body = message.content.slice(PREFIX.length).trim();
-  const commandText = body.slice(commandName.length).trim();
-  const args = commandText.split(/\s+/).filter(Boolean);
-  return { raw: commandText, args };
-}
-
 function parseMention(message, token) {
   const id = token?.replace(/[<@!>]/g, "");
   if (/^\d{17,20}$/.test(id ?? "")) return client.users.fetch(id);
@@ -1837,13 +1335,6 @@ async function handlePrefix(message) {
         data.giveawayId = Number(args[0]);
         if (!Number.isInteger(data.giveawayId)) throw new Error("Provide a giveaway ID.");
         break;
-      case "maintenance": {
-        const mode = args[0];
-        if (!["تشغيل", "ايقاف", "إيقاف", "on", "off"].includes(mode)) throw new Error("Usage: !صيانة تشغيل reason OR !صيانة إيقاف");
-        data.enabled = ["تشغيل", "on"].includes(mode);
-        data.reason = args.slice(1).join(" ");
-        break;
-      }
       case "slowmode":
         data.seconds = Number(args[0]);
         break;
@@ -1858,29 +1349,6 @@ async function handlePrefix(message) {
       case "ticket":
         data.category = ({ "دعم": "support", "شكوى": "complaint", "شراكة": "partnership" })[args[0]] ?? args[0] ?? "support";
         break;
-      case "suggest":
-        data.content = raw;
-        break;
-      case "suggestionreview":
-        data.suggestionId = Number(args[0]);
-        data.status = args[1];
-        if (!Number.isInteger(data.suggestionId)) throw new Error("Usage: !مراجعة اقتراح 12 approved");
-        break;
-      case "apply":
-        data.answers = raw.split("|").map(x => x.trim());
-        break;
-      case "welcome": {
-        requirePermission(message.member, PermissionFlagsBits.ManageGuild, "Manage Server");
-        data.channel = message.mentions.channels.first();
-        data.message = raw.replace(/<#[0-9]{17,20}>/, "").trim();
-        break;
-      }
-      case "autorole":
-        data.role = message.mentions.roles.first();
-        break;
-      case "suggestions": case "applications":
-        data.channel = message.mentions.channels.first();
-        break;
       case "ticketconfig": {
         const mentioned = [...message.mentions.channels.values()];
         data.transcriptChannel = mentioned[0];
@@ -1889,20 +1357,6 @@ async function handlePrefix(message) {
         data.partnershipCategory = mentioned[3];
         break;
       }
-        break;
-      case "antiswear": {
-        const [action, word] = args;
-        data.action = ({ "إضافة": "add", "اضافة": "add", "إزالة": "remove", "ازالة": "remove", "عرض": "list" })[action] ?? action;
-        data.word = word;
-        break;
-      }
-      case "level": case "invites": case "achievements":
-        data.target = args.length ? await target() : user;
-        break;
-      case "reminder":
-        data.duration = args[0];
-        data.message = args.slice(1).join(" ");
-        if (!data.duration || !data.message) throw new Error("Usage: !تذكير 10m message");
         break;
       case "logs":
         data.channel = message.mentions.channels.first() ?? null;
@@ -2116,40 +1570,16 @@ client.on("interactionCreate", async interaction => {
     if (["role", "removerole"].includes(name)) data.role = interaction.options.getRole("role");
     if (name === "logs") data.channel = interaction.options.getChannel("channel");
     if (name === "userinfo") data.target = interaction.options.getUser("user") ?? interaction.user;
-    if (name === "maintenance") {
-      data.enabled = interaction.options.getBoolean("enabled");
-      data.reason = interaction.options.getString("reason") ?? "";
-    }
     if (name === "slowmode") data.seconds = interaction.options.getInteger("seconds");
     if (["announce", "notify"].includes(name)) data.message = interaction.options.getString("message");
     if (name === "notify") data.role = interaction.options.getRole("role");
-    if (name === "reminder") {
-      data.duration = interaction.options.getString("duration");
-      data.message = interaction.options.getString("message");
-    }
     if (name === "ticket") data.category = interaction.options.getString("category") ?? "support";
-    if (name === "welcome") {
-      data.channel = interaction.options.getChannel("channel");
-      data.message = interaction.options.getString("message");
-    }
-    if (name === "autorole") data.role = interaction.options.getRole("role");
-    if (["suggestions", "applications"].includes(name)) data.channel = interaction.options.getChannel("channel");
-    if (name === "suggest") data.content = interaction.options.getString("content");
-    if (name === "suggestionreview") {
-      data.suggestionId = interaction.options.getInteger("id");
-      data.status = interaction.options.getString("status");
-    }
     if (name === "ticketconfig") {
       data.transcriptChannel = interaction.options.getChannel("transcriptchannel");
       data.supportCategory = interaction.options.getChannel("supportcategory");
       data.complaintCategory = interaction.options.getChannel("complaintcategory");
       data.partnershipCategory = interaction.options.getChannel("partnershipcategory");
     }
-    if (name === "antiswear") {
-      data.action = interaction.options.getString("action");
-      data.word = interaction.options.getString("word");
-    }
-    if (["level", "invites", "achievements"].includes(name)) data.target = interaction.options.getUser("user") ?? interaction.user;
 
     const context = {
       guild: interaction.guild,
