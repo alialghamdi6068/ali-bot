@@ -529,12 +529,6 @@ async function execute(context, name, data = {}) {
   const { guild, member, user, channel } = context;
   if (!guild || !isInConfiguredGuild(guild)) throw new Error("This bot is configured for one server only.");
 
-  const maintenanceEnabled = statements.getSetting.get("maintenance_enabled")?.value === "1";
-  if (maintenanceEnabled && name !== "maintenance" && !hasPermission(member, PermissionFlagsBits.ManageGuild)) {
-    const notice = statements.getSetting.get("maintenance_reason")?.value || "The server is currently under maintenance.";
-    throw new Error("Bot maintenance mode is enabled. " + notice);
-  }
-
   if (["ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarn"].includes(name)) {
     return moderation(context, name, data);
   }
@@ -815,16 +809,12 @@ async function execute(context, name, data = {}) {
         "**Other**",
         "`/say` • `/dm` • `/role` • `/removerole` • `/userinfo` • `/serverinfo` • `/ping` • `/logs` • `/help` • `/commands",
         "**Server tools**",
-        "`/maintenance` • `/lock` • `/unlock` • `/slowmode` • `/announce` • `/notify` • `/reminder`",
-        "**Community**",
-        "`/welcome` • `/autorole` • `/suggestions` • `/suggest` • `/suggestionreview` • `/applications` • `/apply` • `/ticketconfig` • `/antiswear` • `/level` • `/leaderboard` • `/invites` • `/achievements`",
+        "`/lock` • `/unlock` • `/slowmode` • `/announce` • `/notify` • `/ticketconfig`",
         "**Arabic prefix**",
         "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح` • `!تنظيف`",
         "`!تكت` • `!إغلاق تكت` • `!فتح تكت` • `!حذف تكت` • `!إضافة عضو` • `!إزالة عضو` • `!استلام تكت`",
         "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة` • `!أوامر`",
-        "`!صيانة` • `!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!تذكير`",
-        "`!قناة ترحيب` • `!رتبة تلقائية` • `!قناة اقتراحات` • `!اقتراح` • `!مراجعة اقتراح` • `!قناة تقديمات` • `!تقديم` • `!إعداد التكت` • `!فلترة كلمات`",
-        "`!مستوى` • `!المتصدرين` • `!دعوات` • `!إنجازات`"
+        "`!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!إعداد التكت`"
       ].join("\n"));
       await reply(context, { embeds: [embed] });
       break;
@@ -1063,9 +1053,6 @@ client.once("ready", async () => {
 
   for (const giveaway of statements.getActiveGiveaways.all()) {
     scheduleGiveawayEnd(giveaway.id, giveaway.ends_at);
-  }
-  for (const reminder of statements.getPendingReminders.all()) {
-    scheduleReminder(reminder);
   }
 });
 

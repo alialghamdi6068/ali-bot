@@ -24,6 +24,7 @@ test("resolves single-word prefix commands", () => {
   assert.deepEqual(resolvePrefixCommand("بطء 10"), { command: "slowmode", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("اعلان نص"), { command: "announce", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("تنبيه @role نص"), { command: "notify", consumed: 1 });
+  assert.deepEqual(resolvePrefixCommand("إعداد التكت #transcript"), { command: "ticketconfig", consumed: 2 });
 });
 
 test("parses supported duration units and rejects invalid values", () => {
