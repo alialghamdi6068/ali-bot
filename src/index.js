@@ -1055,7 +1055,7 @@ client.once("ready", async () => {
   } catch (error) {
     console.error("Failed to register guild slash commands:", error);
   }
-  await community.cacheInvites(await client.guilds.fetch(GUILD_ID).catch(() => client.guilds.cache.get(GUILD_ID)));
+
   client.user.setPresence({
     status: PresenceUpdateStatus.DoNotDisturb,
     activities: [{ name: "𝓐𝓵𝓲 𝓐𝓵𝓰𝓱𝓪𝓶𝓭𝓲", type: ActivityType.Watching }]
@@ -1069,18 +1069,7 @@ client.once("ready", async () => {
   }
 });
 
-client.on("messageCreate", async message => {
-  const filtered = await community.handleMessage(message, logAction).catch(error => {
-    console.error("Community message handler failed:", error);
-    return false;
-  });
-  if (!filtered) await handlePrefix(message);
-});
-client.on("guildMemberAdd", member => {
-  if (member.guild.id === GUILD_ID) community.handleMemberAdd(member, logAction).catch(error => console.error("Member join handler failed:", error));
-});
-client.on("inviteCreate", invite => community.handleInviteCreate(invite).catch(error => console.error("Invite cache update failed:", error)));
-client.on("inviteDelete", invite => community.handleInviteDelete(invite).catch(error => console.error("Invite cache cleanup failed:", error)));
+client.on("messageCreate", handlePrefix);
 
 client.on("channelDelete", channel => {
   const ticket = getTicket(channel.id);
@@ -1092,12 +1081,6 @@ client.on("channelDelete", channel => {
 client.on("interactionCreate", async interaction => {
   try {
     if (await handleTicketInteraction(interaction)) return;
-    if (await community.handleInteraction(interaction, logAction)) return;
-    if (interaction.isChatInputCommand() && interaction.commandName === "apply") {
-      if (!interaction.guild || interaction.guild.id !== GUILD_ID) return interaction.reply({ content: "This bot is configured for one server only.", ephemeral: true });
-      await community.openApplication(interaction);
-      return;
-    }
     if (interaction.isButton() && interaction.customId.startsWith("giveaway:enter:")) {
       if (!interaction.guild || interaction.guild.id !== GUILD_ID) return;
       const id = Number(interaction.customId.split(":")[2]);

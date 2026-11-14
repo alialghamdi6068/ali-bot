@@ -64,9 +64,12 @@ const PREFIX_COMMANDS = [
   ["لوق", "logs"]
 ].sort((a, b) => b[0].length - a[0].length);
 
+const disabledPrefixCommands = new Set(["welcome","autorole","suggestions","suggest","suggestionreview","applications","apply","antiswear","level","leaderboard","invites","achievements","maintenance","reminder"]);
+
 function resolvePrefixCommand(input) {
   const normalized = input.trim().toLocaleLowerCase("ar");
   for (const [label, command] of PREFIX_COMMANDS) {
+    if (disabledPrefixCommands.has(command)) continue;
     if (normalized === label || normalized.startsWith(label + " ")) {
       return { command, consumed: label.split(/\s+/).length };
     }

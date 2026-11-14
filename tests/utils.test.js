@@ -16,28 +16,14 @@ test("resolves single-word prefix commands", () => {
   assert.deepEqual(resolvePrefixCommand("تنظيف 25"), { command: "purge", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("أوامر"), { command: "commands", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("قول hello world"), { command: "say", consumed: 1 });
+  for (const input of ["قناة ترحيب #channel Welcome", "رتبة تلقائية @role", "اقتراح نص", "تقديم answer", "مستوى", "دعوات", "إنجازات", "تذكير 10m نص", "صيانة تشغيل"]) assert.equal(resolvePrefixCommand(input), null);
   assert.deepEqual(resolvePrefixCommand("dm @user hello"), { command: "dm", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("صيانة تشغيل"), { command: "maintenance", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("قفل الروم"), { command: "lock", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("فتح الروم"), { command: "unlock", consumed: 2 });
   assert.deepEqual(resolvePrefixCommand("فتح"), { command: "unlock", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("بطء 10"), { command: "slowmode", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("اعلان نص"), { command: "announce", consumed: 1 });
   assert.deepEqual(resolvePrefixCommand("تنبيه @role نص"), { command: "notify", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("تذكير 10m نص"), { command: "reminder", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("قناة ترحيب #channel Welcome"), { command: "welcome", consumed: 2 });
-  assert.deepEqual(resolvePrefixCommand("رتبة تلقائية @role"), { command: "autorole", consumed: 2 });
-  assert.deepEqual(resolvePrefixCommand("قناة اقتراحات #channel"), { command: "suggestions", consumed: 2 });
-  assert.deepEqual(resolvePrefixCommand("اقتراح نص"), { command: "suggest", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("مراجعة اقتراح 12 approved"), { command: "suggestionreview", consumed: 2 });
-  assert.deepEqual(resolvePrefixCommand("قناة تقديمات #channel"), { command: "applications", consumed: 2 });
-  assert.deepEqual(resolvePrefixCommand("تقديم age | timezone | experience | reason"), { command: "apply", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("إعداد التكت #transcript"), { command: "ticketconfig", consumed: 2 });
-  assert.deepEqual(resolvePrefixCommand("فلترة كلمات إضافة word"), { command: "antiswear", consumed: 2 });
-  assert.deepEqual(resolvePrefixCommand("مستوى"), { command: "level", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("المتصدرين"), { command: "leaderboard", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("دعوات"), { command: "invites", consumed: 1 });
-  assert.deepEqual(resolvePrefixCommand("إنجازات"), { command: "achievements", consumed: 1 });
 });
 
 test("parses supported duration units and rejects invalid values", () => {

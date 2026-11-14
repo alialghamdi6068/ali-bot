@@ -121,4 +121,5 @@ const commands = [
     new SlashCommandBuilder().setName("logs").setDescription("Show recent moderation and bot logs")
 ];
 
-module.exports = commands;
+const disabledCommands = new Set(["welcome","autorole","suggestions","suggest","suggestionreview","applications","apply","antiswear","level","leaderboard","invites","achievements","maintenance","reminder"]);
+module.exports = commands.filter(command => !disabledCommands.has(command.name));
