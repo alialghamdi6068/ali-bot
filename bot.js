@@ -1487,7 +1487,11 @@ client.once("ready", async () => {
 
   client.user.setPresence({
     status: PresenceUpdateStatus.DoNotDisturb,
-    activities: [{ name: "𝓐𝓵𝓲 𝓐𝓵𝓰𝓱𝓪𝓶𝓭𝓲", type: ActivityType.Watching }]
+    activities: [{
+      name: "custom",
+      state: "Developed by alialghamdi_ii",
+      type: ActivityType.Custom
+    }]
   });
 
   for (const giveaway of statements.getActiveGiveaways.all()) {
