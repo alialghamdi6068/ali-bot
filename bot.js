@@ -1218,18 +1218,22 @@ async function execute(context, name, data = {}) {
         "**Moderation**",
         "`/ban` • `/unban` • `/kick` • `/timeout` • `/untimeout` • `/warn` • `/warnings` • `/clearwarn` • `/clear` • `/purge`",
         "**Tickets**",
-        "`/ticket` • `/close` • `/reopen` • `/delete` • `/add` • `/remove` • `/claim`",
+        "`/ticket` • `/close` • `/reopen` • `/delete` • `/add` • `/remove` • `/claim` • `/ticketconfig`",
         "**Giveaways**",
         "`/giveaway` • `/giveawaylist` • `/endgiveaway` • `/reroll`",
-        "**Other**",
-        "`/say` • `/dm` • `/role` • `/removerole` • `/userinfo` • `/serverinfo` • `/ping` • `/logs` • `/help` • `/commands",
-        "**Server tools**",
-        "`/lock` • `/unlock` • `/slowmode` • `/announce` • `/notify` • `/ticketconfig`",
-        "**Arabic prefix**",
+        "**Messages & Roles**",
+        "`/say` • `/dm` • `/role` • `/removerole` • `/announce` • `/notify`",
+        "**Server & Logs**",
+        "`/lock` • `/unlock` • `/slowmode` • `/logs` • `/logsettings`",
+        "**Security**",
+        "`/security enable` • `/security disable` • `/security addword` • `/security removeword` • `/security list` • `/security antispam`",
+        "**Information**",
+        "`/userinfo` • `/serverinfo` • `/ping` • `/help` • `/commands`",
+        "**Arabic prefix commands**",
         "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح` • `!تنظيف`",
         "`!تكت` • `!إغلاق تكت` • `!فتح تكت` • `!حذف تكت` • `!إضافة عضو` • `!إزالة عضو` • `!استلام تكت`",
-        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة` • `!مساعدة` • `!أوامر`",
-        "`!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!إعداد التكت`"
+        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة`",
+        "`!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!إعداد التكت` • `!اعداد اللوق` • `!حماية` • `!لوق`"
       ].join("\n"));
       await reply(context, { embeds: [embed] });
       break;
