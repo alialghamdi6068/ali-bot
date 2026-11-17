@@ -1505,7 +1505,10 @@ async function handleSecurity(message) {
   if (!content) return true;
 
   const blockedWords = statements.getBlockedWords.all(message.guild.id).map(row => row.word);
-  const matched = blockedWords.find(word => content.includes(word));
+  const tokens = content.split(/[^\\p{L}\\p{N}_]+/u);
+  const matched = blockedWords.find(word =>
+    word.includes(" ") ? content.includes(word) : tokens.includes(word)
+  );
   if (matched) {
     await message.delete().catch(() => {});
     logAction(message.guild.id, client.user.id, "security_blocked_message", message.author.id,
