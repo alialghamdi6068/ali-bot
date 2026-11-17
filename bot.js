@@ -511,13 +511,13 @@ const client = new Client({
 
 function logCategory(action) {
   const value = String(action || "").toLowerCase();
+  if (value.startsWith("security_")) return "security";
   if (value.includes("message")) return "messages";
   if (value.startsWith("member_") || value.includes("warning") || value.includes("ban") || value.includes("kick") || value.includes("timeout")) return "members";
   if (value.startsWith("channel_")) return "channels";
   if (value.startsWith("role_")) return "roles";
   if (value.startsWith("ticket_")) return "tickets";
   if (value.includes("giveaway")) return "giveaways";
-  if (value.startsWith("security_")) return "security";
   if (value.startsWith("log_") || value.startsWith("server_")) return "server";
   return "moderation";
 }
@@ -1274,7 +1274,7 @@ async function execute(context, name, data = {}) {
         await reply(context, "Anti-spam is now " + (data.enabled ? "enabled." : "disabled."));
       } else if (sub === "addword") {
         const word = String(data.word || "").trim().toLocaleLowerCase();
-        if (word.length < 2 || !/[\\p{L}\\p{N}]/u.test(word)) throw new Error("Enter a valid word or phrase (2–80 characters).");
+        if (word.length < 2 || !/[\p{L}\p{N}]/u.test(word)) throw new Error("Enter a valid word or phrase (2–80 characters).");
         const result = statements.addBlockedWord.run(guild.id, word, user.id, Date.now());
         await reply(context, result.changes ? "Added the blocked word/phrase." : "That word/phrase is already blocked.");
         logAction(guild.id, user.id, "security_word_add", null, "Added blocked phrase: " + word);
@@ -1286,7 +1286,7 @@ async function execute(context, name, data = {}) {
         logAction(guild.id, user.id, "security_word_remove", null, "Removed blocked phrase: " + word);
       } else {
         const words = statements.getBlockedWords.all(guild.id).map(row => row.word);
-        await reply(context, words.length ? "**Blocked words/phrases:**\\n" + words.map(word => "• " + word).join("\\n") : "No blocked words or phrases configured.");
+        await reply(context, words.length ? "**Blocked words/phrases:**\n" + words.map(word => "• " + word).join("\n") : "No blocked words or phrases configured.");
       }
       break;
     }
@@ -1496,13 +1496,13 @@ const SPAM_WINDOW_MS = 5000;
 const SPAM_LIMIT = 5;
 
 async function handleSecurity(message) {
-  if (!message.guild || message.guild.id !== GUILD_ID || message.author?.bot || !message.member) return;
+  if (!message.guild || message.guild.id !== GUILD_ID || message.author?.bot || !message.member) return true;
   if (message.member.permissions.has(PermissionFlagsBits.ManageGuild) ||
-      message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-  if (statements.getSetting.get("security_enabled")?.value === "false") return;
+      message.member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (statements.getSetting.get("security_enabled")?.value === "false") return true;
 
   const content = String(message.content || "").toLocaleLowerCase().trim();
-  if (!content) return;
+  if (!content) return true;
 
   const blockedWords = statements.getBlockedWords.all(message.guild.id).map(row => row.word);
   const matched = blockedWords.find(word => content.includes(word));
@@ -1510,10 +1510,10 @@ async function handleSecurity(message) {
     await message.delete().catch(() => {});
     logAction(message.guild.id, client.user.id, "security_blocked_message", message.author.id,
       "Blocked configured phrase in #" + message.channel.name + ": " + matched);
-    return;
+    return false;
   }
 
-  if (statements.getSetting.get("antispam_enabled")?.value === "false") return;
+  if (statements.getSetting.get("antispam_enabled")?.value === "false") return true;
   const now = Date.now();
   const key = message.guild.id + ":" + message.author.id;
   const timestamps = (recentUserMessages.get(key) || []).filter(time => now - time < SPAM_WINDOW_MS);
@@ -1524,13 +1524,22 @@ async function handleSecurity(message) {
     recentUserMessages.set(key, []);
     logAction(message.guild.id, client.user.id, "security_spam_detected", message.author.id,
       "Rapid message burst detected in #" + message.channel.name + " (" + timestamps.length + " messages / 5 seconds)");
+    return false;
   }
+
+  if (recentUserMessages.size > 2000) {
+    for (const [userKey, times] of recentUserMessages) {
+      if (!times.length || now - times[times.length - 1] > 60_000) recentUserMessages.delete(userKey);
+    }
+  }
+  return true;
 }
 
 client.on("messageCreate", async message => {
-  try { await handleSecurity(message); }
+  let shouldContinue = true;
+  try { shouldContinue = await handleSecurity(message); }
   catch (error) { console.error("Security handler error:", error); }
-  await handlePrefix(message);
+  if (shouldContinue !== false) await handlePrefix(message);
 });
 
 async function findAuditExecutor(guild, eventType, targetId) {
