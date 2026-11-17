@@ -113,6 +113,15 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_logs_guild_id
     ON logs(guild_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS blocked_words (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    word TEXT NOT NULL COLLATE NOCASE,
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(guild_id, word)
+  );
 `);
 
 const statements = {
@@ -154,6 +163,9 @@ const statements = {
     VALUES(?, ?, ?, ?, ?, ?)
   `),
   getLogs: db.prepare("SELECT * FROM logs WHERE guild_id = ? ORDER BY id DESC LIMIT 15"),
+  addBlockedWord: db.prepare("INSERT OR IGNORE INTO blocked_words(guild_id, word, created_by, created_at) VALUES(?, ?, ?, ?)"),
+  removeBlockedWord: db.prepare("DELETE FROM blocked_words WHERE guild_id = ? AND word = ?"),
+  getBlockedWords: db.prepare("SELECT word FROM blocked_words WHERE guild_id = ? ORDER BY word COLLATE NOCASE"),
   saveTranscript: db.prepare("INSERT INTO ticket_transcripts(ticket_id, guild_id, content, created_at) VALUES(?, ?, ?, ?)"),
 };
   return { db, statements };
@@ -247,7 +259,24 @@ const slashCommands = (() => {
     .addChannelOption(o => o.setName("partnershipcategory").setDescription("Partnership category").addChannelTypes(ChannelType.GuildCategory))
     .addChannelOption(o => o.setName("panelchannel").setDescription("Publish the ticket button panel here").addChannelTypes(ChannelType.GuildText)),
   new SlashCommandBuilder().setName("logs").setDescription("View logs or set the log channel")
-    .addChannelOption(o => o.setName("channel").setDescription("Channel for automatic logs").addChannelTypes(ChannelType.GuildText))
+    .addChannelOption(o => o.setName("channel").setDescription("Channel for automatic logs").addChannelTypes(ChannelType.GuildText)),
+  new SlashCommandBuilder().setName("security").setDescription("Configure automatic message protection")
+    .addSubcommand(s => s.setName("enable").setDescription("Enable automatic message protection"))
+    .addSubcommand(s => s.setName("disable").setDescription("Disable automatic message protection"))
+    .addSubcommand(s => s.setName("addword").setDescription("Block a word or phrase")
+      .addStringOption(o => o.setName("word").setDescription("Word or phrase to block").setMaxLength(80).setRequired(true)))
+    .addSubcommand(s => s.setName("removeword").setDescription("Remove a blocked word or phrase")
+      .addStringOption(o => o.setName("word").setDescription("Word or phrase to remove").setMaxLength(80).setRequired(true)))
+    .addSubcommand(s => s.setName("list").setDescription("List blocked words"))
+    .addSubcommand(s => s.setName("antispam").setDescription("Toggle anti-spam protection")
+      .addBooleanOption(o => o.setName("enabled").setDescription("Enable or disable anti-spam").setRequired(true))),
+  new SlashCommandBuilder().setName("logsettings").setDescription("Enable or disable a log category")
+    .addStringOption(o => o.setName("category").setDescription("Log category").setRequired(true).addChoices(
+      {name:"Messages",value:"messages"},{name:"Members",value:"members"},{name:"Channels",value:"channels"},
+      {name:"Roles",value:"roles"},{name:"Moderation",value:"moderation"},{name:"Tickets",value:"tickets"},
+      {name:"Giveaways",value:"giveaways"},{name:"Security",value:"security"},{name:"Server",value:"server"}
+    ))
+    .addBooleanOption(o => o.setName("enabled").setDescription("Whether this category is sent to the log channel").setRequired(true))
   ];
   return commands;
 })();
@@ -302,6 +331,9 @@ const PREFIX_COMMANDS = [
   ["تنبيه", "notify"],
   ["اعداد التكت", "ticketconfig"],
   ["إعداد التكت", "ticketconfig"],
+  ["اعداد اللوق", "logsettings"],
+  ["إعداد اللوق", "logsettings"],
+  ["حماية", "security"],
   ["لوق", "logs"]
 ].sort((a, b) => b[0].length - a[0].length);
 
@@ -477,6 +509,19 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message]
 });
 
+function logCategory(action) {
+  const value = String(action || "").toLowerCase();
+  if (value.includes("message")) return "messages";
+  if (value.startsWith("member_") || value.includes("warning") || value.includes("ban") || value.includes("kick") || value.includes("timeout")) return "members";
+  if (value.startsWith("channel_")) return "channels";
+  if (value.startsWith("role_")) return "roles";
+  if (value.startsWith("ticket_")) return "tickets";
+  if (value.includes("giveaway")) return "giveaways";
+  if (value.startsWith("security_")) return "security";
+  if (value.startsWith("log_") || value.startsWith("server_")) return "server";
+  return "moderation";
+}
+
 function logAction(guildId, actorId, action, targetId, details) {
   const message = String(details ?? "").slice(0, 3500);
 
@@ -487,6 +532,8 @@ function logAction(guildId, actorId, action, targetId, details) {
     return;
   }
 
+  const categorySetting = statements.getSetting.get("log_enabled_" + logCategory(action))?.value;
+  if (categorySetting === "false") return;
   const logChannelId = statements.getSetting.get("log_channel_id")?.value;
   if (!logChannelId || !client.isReady()) return;
 
@@ -1213,6 +1260,45 @@ async function execute(context, name, data = {}) {
     case "ping":
       await reply(context, `Pong: ${client.ws.ping}ms`);
       break;
+    case "security": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      const sub = data.subcommand;
+      if (sub === "enable" || sub === "disable") {
+        const enabled = sub === "enable";
+        statements.setSetting.run("security_enabled", String(enabled));
+        logAction(guild.id, user.id, "security_config", null, "Automatic message protection " + (enabled ? "enabled" : "disabled"));
+        await reply(context, "Automatic message protection is now " + (enabled ? "enabled." : "disabled."));
+      } else if (sub === "antispam") {
+        statements.setSetting.run("antispam_enabled", String(Boolean(data.enabled)));
+        logAction(guild.id, user.id, "security_config", null, "Anti-spam " + (data.enabled ? "enabled" : "disabled"));
+        await reply(context, "Anti-spam is now " + (data.enabled ? "enabled." : "disabled."));
+      } else if (sub === "addword") {
+        const word = String(data.word || "").trim().toLocaleLowerCase();
+        if (word.length < 2 || !/[\\p{L}\\p{N}]/u.test(word)) throw new Error("Enter a valid word or phrase (2–80 characters).");
+        const result = statements.addBlockedWord.run(guild.id, word, user.id, Date.now());
+        await reply(context, result.changes ? "Added the blocked word/phrase." : "That word/phrase is already blocked.");
+        logAction(guild.id, user.id, "security_word_add", null, "Added blocked phrase: " + word);
+      } else if (sub === "removeword") {
+        const word = String(data.word || "").trim().toLocaleLowerCase();
+        const result = statements.removeBlockedWord.run(guild.id, word);
+        if (!result.changes) throw new Error("That word/phrase is not in the blocked list.");
+        await reply(context, "Removed the blocked word/phrase.");
+        logAction(guild.id, user.id, "security_word_remove", null, "Removed blocked phrase: " + word);
+      } else {
+        const words = statements.getBlockedWords.all(guild.id).map(row => row.word);
+        await reply(context, words.length ? "**Blocked words/phrases:**\\n" + words.map(word => "• " + word).join("\\n") : "No blocked words or phrases configured.");
+      }
+      break;
+    }
+    case "logsettings": {
+      requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
+      const allowed = ["messages","members","channels","roles","moderation","tickets","giveaways","security","server"];
+      if (!allowed.includes(data.category)) throw new Error("Unknown log category.");
+      statements.setSetting.run("log_enabled_" + data.category, String(Boolean(data.enabled)));
+      await reply(context, "The **" + data.category + "** log category is now " + (data.enabled ? "enabled." : "disabled."));
+      logAction(guild.id, user.id, "log_config", null, data.category + " logs " + (data.enabled ? "enabled" : "disabled"));
+      break;
+    }
     case "logs": {
       if (data.channel) {
         requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
@@ -1357,6 +1443,22 @@ async function handlePrefix(message) {
         data.channel = message.mentions.channels.first() ?? null;
         if (args.length && !data.channel) throw new Error("Mention a text channel to configure automatic logs.");
         break;
+      case "security": {
+        const aliases = {"تفعيل":"enable","تعطيل":"disable","اضافة":"addword","إضافة":"addword","حذف":"removeword","قائمة":"list","سبام":"antispam"};
+        data.subcommand = aliases[args[0]] || args[0];
+        if (["addword","removeword"].includes(data.subcommand)) data.word = args.slice(1).join(" ");
+        if (data.subcommand === "antispam") {
+          if (!["on","off","تشغيل","ايقاف","إيقاف"].includes(args[1])) throw new Error("Usage: !حماية سبام on|off");
+          data.enabled = ["on","تشغيل"].includes(args[1]);
+        }
+        if (!["enable","disable","addword","removeword","list","antispam"].includes(data.subcommand)) throw new Error("Usage: !حماية تفعيل|تعطيل|اضافة|حذف|قائمة|سبام on|off");
+        break;
+      }
+      case "logsettings":
+        data.category = args[0];
+        data.enabled = ["on","تشغيل","true"].includes(args[1]);
+        if (!args[0] || !["on","off","تشغيل","ايقاف","true","false"].includes(args[1])) throw new Error("Usage: !اعداد اللوق category on|off");
+        break;
       case "userinfo":
         data.target = args.length ? await target() : message.author;
         break;
@@ -1389,7 +1491,47 @@ client.once("ready", async () => {
   }
 });
 
-client.on("messageCreate", handlePrefix);
+const recentUserMessages = new Map();
+const SPAM_WINDOW_MS = 5000;
+const SPAM_LIMIT = 5;
+
+async function handleSecurity(message) {
+  if (!message.guild || message.guild.id !== GUILD_ID || message.author?.bot || !message.member) return;
+  if (message.member.permissions.has(PermissionFlagsBits.ManageGuild) ||
+      message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+  if (statements.getSetting.get("security_enabled")?.value === "false") return;
+
+  const content = String(message.content || "").toLocaleLowerCase().trim();
+  if (!content) return;
+
+  const blockedWords = statements.getBlockedWords.all(message.guild.id).map(row => row.word);
+  const matched = blockedWords.find(word => content.includes(word));
+  if (matched) {
+    await message.delete().catch(() => {});
+    logAction(message.guild.id, client.user.id, "security_blocked_message", message.author.id,
+      "Blocked configured phrase in #" + message.channel.name + ": " + matched);
+    return;
+  }
+
+  if (statements.getSetting.get("antispam_enabled")?.value === "false") return;
+  const now = Date.now();
+  const key = message.guild.id + ":" + message.author.id;
+  const timestamps = (recentUserMessages.get(key) || []).filter(time => now - time < SPAM_WINDOW_MS);
+  timestamps.push(now);
+  recentUserMessages.set(key, timestamps);
+  if (timestamps.length >= SPAM_LIMIT) {
+    await message.delete().catch(() => {});
+    recentUserMessages.set(key, []);
+    logAction(message.guild.id, client.user.id, "security_spam_detected", message.author.id,
+      "Rapid message burst detected in #" + message.channel.name + " (" + timestamps.length + " messages / 5 seconds)");
+  }
+}
+
+client.on("messageCreate", async message => {
+  try { await handleSecurity(message); }
+  catch (error) { console.error("Security handler error:", error); }
+  await handlePrefix(message);
+});
 
 async function findAuditExecutor(guild, eventType, targetId) {
   if (!guild || !targetId) return null;
@@ -1564,6 +1706,15 @@ client.on("interactionCreate", async interaction => {
     if (name === "dm") data.message = interaction.options.getString("message");
     if (["role", "removerole"].includes(name)) data.role = interaction.options.getRole("role");
     if (name === "logs") data.channel = interaction.options.getChannel("channel");
+    if (name === "security") {
+      data.subcommand = interaction.options.getSubcommand();
+      data.word = interaction.options.getString("word");
+      data.enabled = interaction.options.getBoolean("enabled");
+    }
+    if (name === "logsettings") {
+      data.category = interaction.options.getString("category");
+      data.enabled = interaction.options.getBoolean("enabled");
+    }
     if (name === "userinfo") data.target = interaction.options.getUser("user") ?? interaction.user;
     if (name === "slowmode") data.seconds = interaction.options.getInteger("seconds");
     if (["announce", "notify"].includes(name)) data.message = interaction.options.getString("message");
