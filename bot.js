@@ -508,14 +508,16 @@ const client = new Client({
 
 function logCategory(action) {
   const value = String(action || "").toLowerCase();
+
   if (value.startsWith("security_")) return "security";
-  if (value.includes("message")) return "messages";
-  if (value.startsWith("member_") || value.includes("warning") || value.includes("ban") || value.includes("kick") || value.includes("timeout")) return "members";
-  if (value.startsWith("channel_")) return "channels";
+  if (value.includes("message") || ["say", "dm", "announce", "notify", "clear", "purge"].includes(value)) return "messages";
+  if (value.startsWith("member_") || value.includes("warning") || ["ban", "unban", "kick", "timeout", "untimeout", "warn"].includes(value)) return "members";
+  if (value.startsWith("channel_") || value === "slowmode") return "channels";
   if (value.startsWith("role_")) return "roles";
   if (value.startsWith("ticket_")) return "tickets";
   if (value.includes("giveaway")) return "giveaways";
   if (value.startsWith("log_") || value.startsWith("server_")) return "server";
+
   return "moderation";
 }
 
@@ -524,6 +526,31 @@ function logAction(guildId, actorId, action, targetId, details) {
   const logTitles = {
     message_delete: "Message deleted",
     message_edit: "Message edited",
+    ban: "Member banned",
+    unban: "Member unbanned",
+    kick: "Member kicked",
+    timeout: "Member timed out",
+    untimeout: "Member timeout removed",
+    warn: "Member warned",
+    clear_warning: "Warning removed",
+    clear: "Messages cleared",
+    purge: "Messages cleared",
+    say: "Message sent",
+    dm: "Direct message sent",
+    announce: "Announcement posted",
+    notify: "Notification sent",
+    slowmode: "Slowmode changed",
+    log_config: "Log settings changed",
+    log_channel_config: "Log channel changed",
+    ticket_config: "Ticket settings changed",
+    ticket_panel_publish: "Ticket panel published",
+    ticket_transcript: "Ticket transcript saved",
+    ticket_transcript_failed: "Ticket transcript failed",
+    ticket_add_member: "Member added to ticket",
+    ticket_remove_member: "Member removed from ticket",
+    security_config: "Security settings changed",
+    security_word_add: "Blocked phrase added",
+    security_word_remove: "Blocked phrase removed",
     member_join: "Member joined",
     member_leave: "Member left",
     member_update: "Member updated",
@@ -565,13 +592,26 @@ function logAction(guildId, actorId, action, targetId, details) {
     .then(channel => {
       if (!channel?.isTextBased()) return null;
 
+      let target = "None";
+      if (targetId) {
+        if (action.startsWith("channel_") || action === "ticket_create" || action === "log_channel_config") {
+          target = "<#" + targetId + ">";
+        } else if (action.startsWith("role_")) {
+          target = "<@&" + targetId + ">";
+        } else if (/^\d{17,20}$/.test(targetId)) {
+          target = "<@" + targetId + ">";
+        } else {
+          target = String(targetId);
+        }
+      }
+
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle(title.charAt(0).toUpperCase() + title.slice(1))
         .setDescription(message || "No additional details.")
         .addFields(
           { name: "Actor", value: actorId && /^\d{17,20}$/.test(actorId) ? "<@" + actorId + ">" : (actorId || "System / unknown"), inline: true },
-          { name: "Target", value: targetId ? "<@" + targetId + ">" : "None", inline: true }
+          { name: "Target", value: target, inline: true }
         )
         .setTimestamp();
 
@@ -1373,7 +1413,11 @@ async function execute(context, name, data = {}) {
       requirePermission(member, PermissionFlagsBits.ViewAuditLog, "View Audit Log");
       const rows = statements.getLogs.all(guild.id);
       const description = rows.length
-        ? rows.map(row => `**#${row.id} ${row.action}** • <@${row.actor_id}> • ${row.details.slice(0, 160)} • <t:${Math.floor(row.created_at / 1000)}:R>`).join("\n")
+        ? rows.map(row => {
+            const action = row.action.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+            const actor = /^\d{17,20}$/.test(row.actor_id) ? "<@" + row.actor_id + ">" : "System";
+            return `**#${row.id} ${action}** • ${actor} • ${row.details.slice(0, 160)} • <t:${Math.floor(row.created_at / 1000)}:R>`;
+          }).join("\n")
         : "No logs recorded yet.";
       await reply(context, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("Recent Logs").setDescription(description.slice(0, 4000))] });
       break;
@@ -1608,9 +1652,17 @@ async function handleSecurity(message) {
     word.includes(" ") ? content.includes(word) : tokens.includes(word)
   );
   if (matched) {
-    await message.delete().catch(() => {});
+    let deleted = true;
+    try {
+      await message.delete();
+    } catch (error) {
+      deleted = false;
+      console.error("Could not delete a message blocked by security:", error);
+    }
+
     logAction(message.guild.id, client.user.id, "security_blocked_message", message.author.id,
-      "Blocked configured phrase in #" + message.channel.name + ": " + matched);
+      "Blocked configured phrase in #" + message.channel.name + ": " + matched +
+      (deleted ? "" : " (message could not be deleted; check the bot's Manage Messages permission)"));
     return false;
   }
 
@@ -1621,10 +1673,18 @@ async function handleSecurity(message) {
   timestamps.push(now);
   recentUserMessages.set(key, timestamps);
   if (timestamps.length >= SPAM_LIMIT) {
-    await message.delete().catch(() => {});
+    let deleted = true;
+    try {
+      await message.delete();
+    } catch (error) {
+      deleted = false;
+      console.error("Could not delete a message flagged as spam:", error);
+    }
+
     recentUserMessages.set(key, []);
     logAction(message.guild.id, client.user.id, "security_spam_detected", message.author.id,
-      "Rapid message burst detected in #" + message.channel.name + " (" + timestamps.length + " messages / 5 seconds)");
+      "Rapid message burst detected in #" + message.channel.name + " (" + timestamps.length + " messages / 5 seconds)" +
+      (deleted ? "" : " (message could not be deleted; check the bot's Manage Messages permission)"));
     return false;
   }
 
@@ -1657,13 +1717,9 @@ async function findAuditExecutor(guild, eventType, targetId) {
   }
 }
 
-function isConfiguredGuild(guild) {
-  return Boolean(guild);
-}
-
 client.on("messageDelete", async message => {
   if (message.partial) message = await message.fetch().catch(() => message);
-  if (!isConfiguredGuild(message.guild) || message.author?.bot) return;
+  if (!message.guild || message.author?.bot) return;
   const content = (message.content || "[No cached message content]").slice(0, 1500);
   const actorId = await findAuditExecutor(message.guild, AuditLogEvent.MessageDelete, message.author?.id);
   logAction(message.guild.id, actorId || message.author?.id || "system", "message_delete",
@@ -1673,7 +1729,7 @@ client.on("messageDelete", async message => {
 client.on("messageUpdate", async (oldMessage, newMessage) => {
   if (oldMessage.partial) oldMessage = await oldMessage.fetch().catch(() => oldMessage);
   if (newMessage.partial) newMessage = await newMessage.fetch().catch(() => newMessage);
-  if (!isConfiguredGuild(newMessage.guild) || newMessage.author?.bot) return;
+  if (!newMessage.guild || newMessage.author?.bot) return;
   if (oldMessage.content === newMessage.content) return;
   logAction(newMessage.guild.id, newMessage.author?.id || client.user.id, "message_edit",
     newMessage.author?.id, "Channel #" + newMessage.channel?.name +
@@ -1682,19 +1738,19 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
 });
 
 client.on("guildMemberAdd", member => {
-  if (!isConfiguredGuild(member.guild)) return;
+  if (!member.guild) return;
   logAction(member.guild.id, member.id, "member_join", member.id,
     member.user.tag + " joined the server");
 });
 
 client.on("guildMemberRemove", member => {
-  if (!isConfiguredGuild(member.guild)) return;
+  if (!member.guild) return;
   logAction(member.guild.id, member.id, "member_leave", member.id,
     (member.user?.tag || member.id) + " left the server");
 });
 
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
-  if (!isConfiguredGuild(newMember.guild)) return;
+  if (!newMember.guild) return;
   const changes = [];
   const oldRoles = new Set(oldMember.roles.cache.keys());
   const newRoles = new Set(newMember.roles.cache.keys());
@@ -1714,14 +1770,14 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
 });
 
 client.on("channelCreate", async channel => {
-  if (!isConfiguredGuild(channel.guild)) return;
+  if (!channel.guild) return;
   const actorId = await findAuditExecutor(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
   logAction(channel.guild.id, actorId || "system", "channel_create", channel.id,
     "Created #" + channel.name);
 });
 
 client.on("channelUpdate", async (oldChannel, newChannel) => {
-  if (!isConfiguredGuild(newChannel.guild)) return;
+  if (!newChannel.guild) return;
   const changes = [];
   if (oldChannel.name !== newChannel.name) changes.push("Name: " + oldChannel.name + " → " + newChannel.name);
   if (oldChannel.topic !== newChannel.topic) changes.push("Topic changed");
@@ -1730,7 +1786,7 @@ client.on("channelUpdate", async (oldChannel, newChannel) => {
 });
 
 client.on("channelDelete", async channel => {
-  if (!isConfiguredGuild(channel.guild)) return;
+  if (!channel.guild) return;
   const ticket = getTicket(channel.id);
   if (ticket && ticket.status !== "deleted") {
     statements.updateTicketStatus.run("deleted", Date.now(), channel.id);
@@ -1740,13 +1796,13 @@ client.on("channelDelete", async channel => {
 });
 
 client.on("roleCreate", async role => {
-  if (!isConfiguredGuild(role.guild)) return;
+  if (!role.guild) return;
   const actorId = await findAuditExecutor(role.guild, AuditLogEvent.RoleCreate, role.id);
   logAction(role.guild.id, actorId || "system", "role_create", role.id, "Created role " + role.name);
 });
 
 client.on("roleUpdate", async (oldRole, newRole) => {
-  if (!isConfiguredGuild(newRole.guild)) return;
+  if (!newRole.guild) return;
   const changes = [];
   if (oldRole.name !== newRole.name) changes.push("Name: " + oldRole.name + " → " + newRole.name);
   if (oldRole.color !== newRole.color) changes.push("Color changed");
@@ -1755,19 +1811,19 @@ client.on("roleUpdate", async (oldRole, newRole) => {
 });
 
 client.on("roleDelete", async role => {
-  if (!isConfiguredGuild(role.guild)) return;
+  if (!role.guild) return;
   const actorId = await findAuditExecutor(role.guild, AuditLogEvent.RoleDelete, role.id);
   logAction(role.guild.id, actorId || "system", "role_delete", role.id, "Deleted role " + role.name);
 });
 
 client.on("guildBanAdd", async ban => {
-  if (!isConfiguredGuild(ban.guild)) return;
+  if (!ban.guild) return;
   const actorId = await findAuditExecutor(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
   logAction(ban.guild.id, actorId || "system", "member_ban", ban.user.id, "Banned " + ban.user.tag);
 });
 
 client.on("guildBanRemove", async ban => {
-  if (!isConfiguredGuild(ban.guild)) return;
+  if (!ban.guild) return;
   const actorId = await findAuditExecutor(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id);
   logAction(ban.guild.id, actorId || "system", "member_unban", ban.user.id, "Unbanned " + ban.user.tag);
 });
