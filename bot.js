@@ -791,6 +791,13 @@ async function handleTicketInteraction(interaction) {
   if (!interaction.guild) return false;
 
   const parts = interaction.customId.split(":");
+
+  if (parts[1] === "create" && ["support", "complaint", "partnership"].includes(parts[2])) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  } else if (parts[1] === "action" && parts[2] === "delete") {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+
   const context = {
     guild: interaction.guild,
     member: await interaction.guild.members.fetch(interaction.user.id),
@@ -811,7 +818,6 @@ async function handleTicketInteraction(interaction) {
   if (parts[1] === "create") {
     const category = parts[2];
     if (!["support", "complaint", "partnership"].includes(category)) return false;
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await createTicket(context, category);
     return true;
   }
@@ -819,7 +825,6 @@ async function handleTicketInteraction(interaction) {
   if (parts[1] === "action") {
     const action = parts[2];
     if (!["close", "claim", "reopen", "delete"].includes(action)) return false;
-    if (action === "delete") await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (action === "close") await closeTicket(context);
     else if (action === "claim") await claimTicket(context);
     else if (action === "reopen") await reopenTicket(context);
@@ -1894,6 +1899,10 @@ client.on("interactionCreate", async interaction => {
       data.panelChannel = interaction.options.getChannel("panelchannel");
     }
 
+    const publicReplies = new Set(["lock", "unlock", "slowmode", "reopen", "add", "remove", "claim", "ticketconfig"]);
+    const isPublic = publicReplies.has(name) || (name === "logs" && Boolean(data.channel));
+    await interaction.deferReply(isPublic ? {} : { flags: MessageFlags.Ephemeral });
+
     const context = {
       guild: interaction.guild,
       member: await interaction.guild.members.fetch(interaction.user.id),
@@ -1911,9 +1920,6 @@ client.on("interactionCreate", async interaction => {
       }
     };
 
-    const publicReplies = new Set(["lock", "unlock", "slowmode", "reopen", "add", "remove", "claim", "ticketconfig"]);
-    const isPublic = publicReplies.has(name) || (name === "logs" && Boolean(data.channel));
-    await interaction.deferReply(isPublic ? {} : { flags: MessageFlags.Ephemeral });
     await execute(context, name, data);
   } catch (error) {
     console.error("Slash command failed:", error);
