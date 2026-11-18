@@ -18,161 +18,161 @@ const {
 const { randomInt } = require("node:crypto");
 
 const database = (() => {
-const fs = require("node:fs");
-const path = require("node:path");
-const Database = require("better-sqlite3");
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const Database = require("better-sqlite3");
 
-const dataDirectory = path.join(__dirname, "data");
-fs.mkdirSync(dataDirectory, { recursive: true });
+  const dataDirectory = path.join(__dirname, "data");
+  fs.mkdirSync(dataDirectory, { recursive: true });
 
-const db = new Database(path.join(dataDirectory, "ali-bot.sqlite"));
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-db.pragma("busy_timeout = 5000");
+  const db = new Database(path.join(dataDirectory, "ali-bot.sqlite"));
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.pragma("busy_timeout = 5000");
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS counters (
-    name TEXT PRIMARY KEY,
-    value INTEGER NOT NULL
-  );
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS counters (
+      name TEXT PRIMARY KEY,
+      value INTEGER NOT NULL
+    );
 
-  CREATE TABLE IF NOT EXISTS tickets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    number INTEGER NOT NULL UNIQUE,
-    guild_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL UNIQUE,
-    user_id TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',
-    claimed_by TEXT,
-    created_at INTEGER NOT NULL,
-    closed_at INTEGER
-  );
+    CREATE TABLE IF NOT EXISTS tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      number INTEGER NOT NULL UNIQUE,
+      guild_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL UNIQUE,
+      user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      claimed_by TEXT,
+      created_at INTEGER NOT NULL,
+      closed_at INTEGER
+    );
 
-  CREATE INDEX IF NOT EXISTS idx_tickets_guild_user_status
-    ON tickets(guild_id, user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_tickets_guild_user_status
+      ON tickets(guild_id, user_id, status);
 
-  CREATE TABLE IF NOT EXISTS warnings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    moderator_id TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  );
+    CREATE TABLE IF NOT EXISTS warnings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      moderator_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
 
-  CREATE INDEX IF NOT EXISTS idx_warnings_guild_user
-    ON warnings(guild_id, user_id, id);
+    CREATE INDEX IF NOT EXISTS idx_warnings_guild_user
+      ON warnings(guild_id, user_id, id);
 
-  CREATE TABLE IF NOT EXISTS giveaways (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    message_id TEXT,
-    host_id TEXT NOT NULL,
-    prize TEXT NOT NULL,
-    winners_count INTEGER NOT NULL,
-    ends_at INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at INTEGER NOT NULL
-  );
+    CREATE TABLE IF NOT EXISTS giveaways (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT,
+      host_id TEXT NOT NULL,
+      prize TEXT NOT NULL,
+      winners_count INTEGER NOT NULL,
+      ends_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL
+    );
 
-  CREATE TABLE IF NOT EXISTS giveaway_entries (
-    giveaway_id INTEGER NOT NULL REFERENCES giveaways(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL,
-    entered_at INTEGER NOT NULL,
-    PRIMARY KEY (giveaway_id, user_id)
-  );
+    CREATE TABLE IF NOT EXISTS giveaway_entries (
+      giveaway_id INTEGER NOT NULL REFERENCES giveaways(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      entered_at INTEGER NOT NULL,
+      PRIMARY KEY (giveaway_id, user_id)
+    );
 
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
 
-  CREATE TABLE IF NOT EXISTS guild_settings (
-    guild_id TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (guild_id, key)
-  );
+    CREATE TABLE IF NOT EXISTS guild_settings (
+      guild_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      PRIMARY KEY (guild_id, key)
+    );
 
-  CREATE TABLE IF NOT EXISTS ticket_transcripts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticket_id INTEGER NOT NULL,
-    guild_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  );
+    CREATE TABLE IF NOT EXISTS ticket_transcripts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL,
+      guild_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
 
-  CREATE TABLE IF NOT EXISTS logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    actor_id TEXT NOT NULL,
-    action TEXT NOT NULL,
-    target_id TEXT,
-    details TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  );
+    CREATE TABLE IF NOT EXISTS logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_id TEXT,
+      details TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
 
-  CREATE INDEX IF NOT EXISTS idx_logs_guild_id
-    ON logs(guild_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_logs_guild_id
+      ON logs(guild_id, id DESC);
 
-  CREATE TABLE IF NOT EXISTS blocked_words (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    word TEXT NOT NULL COLLATE NOCASE,
-    created_by TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    UNIQUE(guild_id, word)
-  );
-`);
+    CREATE TABLE IF NOT EXISTS blocked_words (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      word TEXT NOT NULL COLLATE NOCASE,
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(guild_id, word)
+    );
+  `);
 
-const statements = {
-  nextTicket: db.prepare(`
-    INSERT INTO counters(name, value) VALUES('ticket', 1)
-    ON CONFLICT(name) DO UPDATE SET value = value + 1
-    RETURNING value
-  `),
-  createTicket: db.prepare(`
-    INSERT INTO tickets(number, guild_id, channel_id, user_id, created_at)
-    VALUES(@number, @guildId, @channelId, @userId, @createdAt)
-  `),
-  getTicketByChannel: db.prepare("SELECT * FROM tickets WHERE channel_id = ?"),
-  getOpenTicketByUser: db.prepare("SELECT * FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open'"),
-  updateTicketStatus: db.prepare("UPDATE tickets SET status = ?, closed_at = ? WHERE channel_id = ?"),
-  claimTicket: db.prepare("UPDATE tickets SET claimed_by = ? WHERE channel_id = ?"),
-  addWarning: db.prepare(`
-    INSERT INTO warnings(guild_id, user_id, moderator_id, reason, created_at)
-    VALUES(?, ?, ?, ?, ?)
-  `),
-  getWarnings: db.prepare("SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY id DESC LIMIT 20"),
-  deleteWarning: db.prepare("DELETE FROM warnings WHERE id = ? AND guild_id = ? AND user_id = ?"),
-  createGiveaway: db.prepare(`
-    INSERT INTO giveaways(guild_id, channel_id, host_id, prize, winners_count, ends_at, created_at)
-    VALUES(@guildId, @channelId, @hostId, @prize, @winnersCount, @endsAt, @createdAt)
-  `),
-  setGiveawayMessage: db.prepare("UPDATE giveaways SET message_id = ? WHERE id = ?"),
-  deleteGiveaway: db.prepare("DELETE FROM giveaways WHERE id = ?"),
-  getGiveaway: db.prepare("SELECT * FROM giveaways WHERE id = ? AND guild_id = ?"),
-  getActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE status = 'active'"),
-  getGuildActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE guild_id = ? AND status = 'active' ORDER BY id DESC LIMIT 15"),
-  enterGiveaway: db.prepare("INSERT OR IGNORE INTO giveaway_entries(giveaway_id, user_id, entered_at) VALUES(?, ?, ?)"),
-  getGiveawayEntries: db.prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?"),
-  endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status = 'active'"),
-  getLegacySettings: db.prepare("SELECT key, value FROM settings"),
-  getGuildSetting: db.prepare("SELECT value FROM guild_settings WHERE guild_id = ? AND key = ?"),
-  setGuildSetting: db.prepare("INSERT INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?) ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value"),
-  setGuildSettingIfMissing: db.prepare("INSERT OR IGNORE INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?)"),
-    addLog: db.prepare(`
-    INSERT INTO logs(guild_id, actor_id, action, target_id, details, created_at)
-    VALUES(?, ?, ?, ?, ?, ?)
-  `),
-  getLogs: db.prepare("SELECT * FROM logs WHERE guild_id = ? ORDER BY id DESC LIMIT 15"),
-  addBlockedWord: db.prepare("INSERT OR IGNORE INTO blocked_words(guild_id, word, created_by, created_at) VALUES(?, ?, ?, ?)"),
-  removeBlockedWord: db.prepare("DELETE FROM blocked_words WHERE guild_id = ? AND word = ?"),
-  getBlockedWords: db.prepare("SELECT word FROM blocked_words WHERE guild_id = ? ORDER BY word COLLATE NOCASE"),
-  saveTranscript: db.prepare("INSERT INTO ticket_transcripts(ticket_id, guild_id, content, created_at) VALUES(?, ?, ?, ?)"),
-};
-  return { db, statements };
+  const statements = {
+    nextTicket: db.prepare(`
+      INSERT INTO counters(name, value) VALUES('ticket', 1)
+      ON CONFLICT(name) DO UPDATE SET value = value + 1
+      RETURNING value
+    `),
+    createTicket: db.prepare(`
+      INSERT INTO tickets(number, guild_id, channel_id, user_id, created_at)
+      VALUES(@number, @guildId, @channelId, @userId, @createdAt)
+    `),
+    getTicketByChannel: db.prepare("SELECT * FROM tickets WHERE channel_id = ?"),
+    getOpenTicketByUser: db.prepare("SELECT * FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open'"),
+    updateTicketStatus: db.prepare("UPDATE tickets SET status = ?, closed_at = ? WHERE channel_id = ?"),
+    claimTicket: db.prepare("UPDATE tickets SET claimed_by = ? WHERE channel_id = ?"),
+    addWarning: db.prepare(`
+      INSERT INTO warnings(guild_id, user_id, moderator_id, reason, created_at)
+      VALUES(?, ?, ?, ?, ?)
+    `),
+    getWarnings: db.prepare("SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY id DESC LIMIT 20"),
+    deleteWarning: db.prepare("DELETE FROM warnings WHERE id = ? AND guild_id = ? AND user_id = ?"),
+    createGiveaway: db.prepare(`
+      INSERT INTO giveaways(guild_id, channel_id, host_id, prize, winners_count, ends_at, created_at)
+      VALUES(@guildId, @channelId, @hostId, @prize, @winnersCount, @endsAt, @createdAt)
+    `),
+    setGiveawayMessage: db.prepare("UPDATE giveaways SET message_id = ? WHERE id = ?"),
+    deleteGiveaway: db.prepare("DELETE FROM giveaways WHERE id = ?"),
+    getGiveaway: db.prepare("SELECT * FROM giveaways WHERE id = ? AND guild_id = ?"),
+    getActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE status = 'active'"),
+    getGuildActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE guild_id = ? AND status = 'active' ORDER BY id DESC LIMIT 15"),
+    enterGiveaway: db.prepare("INSERT OR IGNORE INTO giveaway_entries(giveaway_id, user_id, entered_at) VALUES(?, ?, ?)"),
+    getGiveawayEntries: db.prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?"),
+    endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status = 'active'"),
+    getLegacySettings: db.prepare("SELECT key, value FROM settings"),
+    getGuildSetting: db.prepare("SELECT value FROM guild_settings WHERE guild_id = ? AND key = ?"),
+    setGuildSetting: db.prepare("INSERT INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?) ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value"),
+    setGuildSettingIfMissing: db.prepare("INSERT OR IGNORE INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?)"),
+      addLog: db.prepare(`
+      INSERT INTO logs(guild_id, actor_id, action, target_id, details, created_at)
+      VALUES(?, ?, ?, ?, ?, ?)
+    `),
+    getLogs: db.prepare("SELECT * FROM logs WHERE guild_id = ? ORDER BY id DESC LIMIT 15"),
+    addBlockedWord: db.prepare("INSERT OR IGNORE INTO blocked_words(guild_id, word, created_by, created_at) VALUES(?, ?, ?, ?)"),
+    removeBlockedWord: db.prepare("DELETE FROM blocked_words WHERE guild_id = ? AND word = ?"),
+    getBlockedWords: db.prepare("SELECT word FROM blocked_words WHERE guild_id = ? ORDER BY word COLLATE NOCASE"),
+    saveTranscript: db.prepare("INSERT INTO ticket_transcripts(ticket_id, guild_id, content, created_at) VALUES(?, ?, ?, ?)"),
+  };
+    return { db, statements };
 })();
 const { statements } = database;
 
@@ -286,127 +286,127 @@ const slashCommands = (() => {
 })();
 
 const utils = (() => {
-const PREFIX_COMMANDS = [
-  ["فك حظر", "unban"],
-  ["إلغاء تايم", "untimeout"],
-  ["الغاء تايم", "untimeout"],
-  ["مسح تحذير", "clearwarn"],
-  ["عرض تحذيرات", "warnings"],
-  ["تحذيرات", "warnings"],
-  ["إغلاق تكت", "close"],
-  ["فتح تكت", "reopen"],
-  ["حذف تكت", "delete"],
-  ["إضافة عضو", "add"],
-  ["اضافة عضو", "add"],
-  ["ازالة عضو", "remove"],
-  ["إزالة عضو", "remove"],
-  ["استلام تكت", "claim"],
-  ["إنهاء قيفواي", "endgiveaway"],
-  ["انهاء قيفواي", "endgiveaway"],
-  ["اعادة سحب", "reroll"],
-  ["إعادة سحب", "reroll"],
-  ["سحب رتبة", "removerole"],
-  ["معلومات السيرفر", "serverinfo"],
-  ["حظر", "ban"],
-  ["طرد", "kick"],
-  ["تايم", "timeout"],
-  ["تحذير", "warn"],
-  ["تكت", "ticket"],
-  ["قيفوايات", "giveawaylist"],
-  ["قيفواي", "giveaway"],
-  ["قول", "say"],
-  ["dm", "dm"],
-  ["رتبة", "role"],
-  ["مسح", "clear"],
-  ["تنظيف", "purge"],
-  ["أوامر", "commands"],
-  ["اوامر", "commands"],
-  ["مساعدة", "help"],
-  ["معلومات", "userinfo"],
-  ["بينق", "ping"],
-  ["قفل", "lock"],
-  ["قفل الروم", "lock"],
-  ["فتح", "unlock"],
-  ["فتح الروم", "unlock"],
-  ["بطء", "slowmode"],
-  ["اعلان", "announce"],
-  ["إعلان", "announce"],
-  ["تنبيه", "notify"],
-  ["اعداد التكت", "ticketconfig"],
-  ["إعداد التكت", "ticketconfig"],
-  ["اعداد اللوق", "logsettings"],
-  ["إعداد اللوق", "logsettings"],
-  ["حماية", "security"],
-  ["لوق", "logs"]
-].sort((a, b) => b[0].length - a[0].length);
+  const PREFIX_COMMANDS = [
+    ["فك حظر", "unban"],
+    ["إلغاء تايم", "untimeout"],
+    ["الغاء تايم", "untimeout"],
+    ["مسح تحذير", "clearwarn"],
+    ["عرض تحذيرات", "warnings"],
+    ["تحذيرات", "warnings"],
+    ["إغلاق تكت", "close"],
+    ["فتح تكت", "reopen"],
+    ["حذف تكت", "delete"],
+    ["إضافة عضو", "add"],
+    ["اضافة عضو", "add"],
+    ["ازالة عضو", "remove"],
+    ["إزالة عضو", "remove"],
+    ["استلام تكت", "claim"],
+    ["إنهاء قيفواي", "endgiveaway"],
+    ["انهاء قيفواي", "endgiveaway"],
+    ["اعادة سحب", "reroll"],
+    ["إعادة سحب", "reroll"],
+    ["سحب رتبة", "removerole"],
+    ["معلومات السيرفر", "serverinfo"],
+    ["حظر", "ban"],
+    ["طرد", "kick"],
+    ["تايم", "timeout"],
+    ["تحذير", "warn"],
+    ["تكت", "ticket"],
+    ["قيفوايات", "giveawaylist"],
+    ["قيفواي", "giveaway"],
+    ["قول", "say"],
+    ["dm", "dm"],
+    ["رتبة", "role"],
+    ["مسح", "clear"],
+    ["تنظيف", "purge"],
+    ["أوامر", "commands"],
+    ["اوامر", "commands"],
+    ["مساعدة", "help"],
+    ["معلومات", "userinfo"],
+    ["بينق", "ping"],
+    ["قفل", "lock"],
+    ["قفل الروم", "lock"],
+    ["فتح", "unlock"],
+    ["فتح الروم", "unlock"],
+    ["بطء", "slowmode"],
+    ["اعلان", "announce"],
+    ["إعلان", "announce"],
+    ["تنبيه", "notify"],
+    ["اعداد التكت", "ticketconfig"],
+    ["إعداد التكت", "ticketconfig"],
+    ["اعداد اللوق", "logsettings"],
+    ["إعداد اللوق", "logsettings"],
+    ["حماية", "security"],
+    ["لوق", "logs"]
+  ].sort((a, b) => b[0].length - a[0].length);
 
-function resolvePrefixCommand(input) {
-  const normalized = input.trim().toLocaleLowerCase("ar");
-  for (const [label, command] of PREFIX_COMMANDS) {
-    if (normalized === label || normalized.startsWith(label + " ")) {
-      return { command, consumed: label.split(/\s+/).length };
+  function resolvePrefixCommand(input) {
+    const normalized = input.trim().toLocaleLowerCase("ar");
+    for (const [label, command] of PREFIX_COMMANDS) {
+      if (normalized === label || normalized.startsWith(label + " ")) {
+        return { command, consumed: label.split(/\s+/).length };
+      }
     }
+    return null;
   }
-  return null;
-}
 
-function parseDuration(value) {
-  if (typeof value !== "string") return null;
-  const match = value.trim().match(/^(\d+)(s|m|h|d)$/i);
-  if (!match) return null;
-  const amount = Number(match[1]);
-  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
-  const multiplier = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2].toLowerCase()];
-  const result = amount * multiplier;
-  return Number.isSafeInteger(result) ? result : null;
-}
+  function parseDuration(value) {
+    if (typeof value !== "string") return null;
+    const match = value.trim().match(/^(\d+)(s|m|h|d)$/i);
+    if (!match) return null;
+    const amount = Number(match[1]);
+    if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+    const multiplier = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2].toLowerCase()];
+    const result = amount * multiplier;
+    return Number.isSafeInteger(result) ? result : null;
+  }
 
-function formatDate(date) {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC"
-  }).format(date);
-}
-  return { resolvePrefixCommand, parseDuration, formatDate };
+  function formatDate(date) {
+    return new Intl.DateTimeFormat("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "UTC"
+    }).format(date);
+  }
+    return { resolvePrefixCommand, parseDuration, formatDate };
 })();
 const { resolvePrefixCommand, parseDuration, formatDate } = utils;
 
 const permissions = (() => {
-function assertCanModerateMember({ actor, target, bot, guild }) {
-  if (!actor || !target || !bot) throw new Error("Could not verify member role hierarchy.");
-  if (actor.id === target.id) throw new Error("You cannot use moderation commands on yourself.");
-  if (guild?.ownerId === target.id) throw new Error("The server owner cannot be moderated.");
-  if (bot.id === target.id) throw new Error("The bot cannot moderate itself.");
-  if (target.roles.highest.position >= bot.roles.highest.position) {
-    throw new Error("I cannot moderate a member with a role equal to or higher than my highest role.");
+  function assertCanModerateMember({ actor, target, bot, guild }) {
+    if (!actor || !target || !bot) throw new Error("Could not verify member role hierarchy.");
+    if (actor.id === target.id) throw new Error("You cannot use moderation commands on yourself.");
+    if (guild?.ownerId === target.id) throw new Error("The server owner cannot be moderated.");
+    if (bot.id === target.id) throw new Error("The bot cannot moderate itself.");
+    if (target.roles.highest.position >= bot.roles.highest.position) {
+      throw new Error("I cannot moderate a member with a role equal to or higher than my highest role.");
+    }
+    if (guild?.ownerId !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
+      throw new Error("You cannot moderate a member with a role equal to or higher than your highest role.");
+    }
   }
-  if (guild?.ownerId !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
-    throw new Error("You cannot moderate a member with a role equal to or higher than your highest role.");
-  }
-}
 
-function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }) {
-  if (!actor || !target || !bot || !role) throw new Error("Could not verify role hierarchy.");
-  if (role.id === everyoneRoleId) throw new Error("The @everyone role cannot be managed with this command.");
-  if (role.managed) throw new Error("Managed integration roles cannot be assigned manually.");
-  if (role.position >= bot.roles.highest.position) {
-    throw new Error("I cannot manage a role equal to or higher than my highest role.");
+  function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }) {
+    if (!actor || !target || !bot || !role) throw new Error("Could not verify role hierarchy.");
+    if (role.id === everyoneRoleId) throw new Error("The @everyone role cannot be managed with this command.");
+    if (role.managed) throw new Error("Managed integration roles cannot be assigned manually.");
+    if (role.position >= bot.roles.highest.position) {
+      throw new Error("I cannot manage a role equal to or higher than my highest role.");
+    }
+    if (guild?.ownerId !== actor.id && role.position >= actor.roles.highest.position) {
+      throw new Error("You cannot manage a role equal to or higher than your highest role.");
+    }
+    if (guild?.ownerId === target.id && guild?.ownerId !== actor.id) {
+      throw new Error("You cannot change roles for the server owner.");
+    }
+    if (guild?.ownerId !== actor.id && target.id !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
+      throw new Error("You cannot change roles for a target member with a role equal to or higher than your highest role.");
+    }
+    if (target.roles.highest.position >= bot.roles.highest.position) {
+      throw new Error("I cannot change roles for a member with a role equal to or higher than my highest role.");
+    }
   }
-  if (guild?.ownerId !== actor.id && role.position >= actor.roles.highest.position) {
-    throw new Error("You cannot manage a role equal to or higher than your highest role.");
-  }
-  if (guild?.ownerId === target.id && guild?.ownerId !== actor.id) {
-    throw new Error("You cannot change roles for the server owner.");
-  }
-  if (guild?.ownerId !== actor.id && target.id !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
-    throw new Error("You cannot change roles for a target member with a role equal to or higher than your highest role.");
-  }
-  if (target.roles.highest.position >= bot.roles.highest.position) {
-    throw new Error("I cannot change roles for a member with a role equal to or higher than my highest role.");
-  }
-}
-  return { assertCanModerateMember, assertCanManageRole };
+    return { assertCanModerateMember, assertCanManageRole };
 })();
 const { assertCanModerateMember, assertCanManageRole } = permissions;
 
@@ -417,20 +417,20 @@ const ticketSupport = (() => {
   async function createTranscript(channel, ticket, guild, logAction) {
     const messages = [];
     let before;
-  
+
     while (true) {
       const page = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
       if (!page.size) break;
-  
+
       messages.push(...page.values());
       if (page.size < 100) break;
       if (messages.length >= 10000) {
         throw new Error("This ticket has more than 10,000 messages. The transcript was not marked as complete.");
       }
-  
+
       before = page.last().id;
     }
-  
+
     const ordered = messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
     const lines = ordered.map(message => {
       const attachments = [...message.attachments.values()].map(file => file.url);
@@ -444,25 +444,25 @@ const ticketSupport = (() => {
       return "[" + new Date(message.createdTimestamp).toISOString() + "] " +
         message.author.tag + " (" + message.author.id + "):\n" + body;
     });
-  
+
     const content = "Ticket #" + ticket.number + " | " + guild.name +
       "\nOwner: " + ticket.user_id +
       "\nMessages: " + ordered.length +
       "\n\n" + lines.join("\n\n");
-  
+
     statements.saveTranscript.run(ticket.id, guild.id, content, Date.now());
-  
+
     const transcriptChannelId = setting("transcript_channel_id");
     if (transcriptChannelId) {
       const target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
       if (!target?.isTextBased()) {
         throw new Error("The configured transcript channel is unavailable.");
       }
-  
+
       const buffer = Buffer.from(content, "utf8");
       const chunkSize = 7 * 1024 * 1024;
       const files = [];
-  
+
       for (let offset = 0, part = 1; offset < buffer.length; offset += chunkSize, part += 1) {
         const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, buffer.length));
         const suffix = buffer.length > chunkSize ? "-part-" + part : "";
@@ -470,14 +470,14 @@ const ticketSupport = (() => {
           name: "ticket-" + ticket.number + "-transcript" + suffix + ".txt"
         }));
       }
-  
+
       await target.send({
         content: "Transcript for ticket #" + ticket.number + " (" + ordered.length + " messages).",
         files,
         allowedMentions: { parse: [] }
       });
     }
-  
+
     logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id,
       "Ticket #" + ticket.number + " — " + ordered.length + " messages");
   }
