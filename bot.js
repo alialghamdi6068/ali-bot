@@ -513,7 +513,7 @@ function logCategory(action) {
   if (value.includes("message") || ["say", "dm", "announce", "notify", "clear", "purge"].includes(value)) return "messages";
   if (value.startsWith("member_") || value.includes("warning") || ["ban", "unban", "kick", "timeout", "untimeout", "warn"].includes(value)) return "members";
   if (value.startsWith("channel_") || value === "slowmode") return "channels";
-  if (value.startsWith("role_")) return "roles";
+  if (value.startsWith("role_") || ["role", "removerole"].includes(value)) return "roles";
   if (value.startsWith("ticket_")) return "tickets";
   if (value.includes("giveaway")) return "giveaways";
   if (value.startsWith("log_") || value.startsWith("server_")) return "server";
@@ -564,6 +564,8 @@ function logAction(guildId, actorId, action, targetId, details) {
     role_create: "Role created",
     role_update: "Role updated",
     role_delete: "Role deleted",
+    role: "Role added",
+    removerole: "Role removed",
     ticket_create: "Ticket opened",
     ticket_close: "Ticket closed",
     ticket_reopen: "Ticket reopened",
