@@ -484,18 +484,36 @@ const ticketSupport = (() => {
 })();
 
 // Main bot
-// Configuration — enter your values here before starting the bot.
-const TOKEN = "PASTE_YOUR_BOT_TOKEN_HERE";
-const GUILD_ID = "PASTE_YOUR_SERVER_ID_HERE";
+// ============================================================
+//                  BOT CONFIGURATION
+//        EDIT THE VALUES IN THIS SECTION BEFORE STARTING
+// ============================================================
 
-if (TOKEN === "PASTE_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
-  throw new Error("Add your Discord bot token to TOKEN in bot.js.");
-}
-if (GUILD_ID === "PASTE_YOUR_SERVER_ID_HERE" || !/^\d{17,20}$/.test(GUILD_ID)) {
-  throw new Error("Add a valid Discord server ID to GUILD_ID in bot.js.");
-}
+// 1) BOT TOKEN
+// Discord Developer Portal → Your Application → Bot → Reset Token / Copy
+const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
+
+// 2) SERVER (GUILD) ID
+// Enable Developer Mode in Discord, then right-click your server → Copy Server ID
+const GUILD_ID = "PUT_YOUR_SERVER_ID_HERE";
+
+// 3) PREFIX FOR ARABIC TEXT COMMANDS
 const PREFIX = "!";
+
+// 4) DEFAULT REASON USED WHEN A MODERATION REASON IS OMITTED
 const DEFAULT_REASON = "No reason provided.";
+
+// Configuration validation — do not edit this section.
+if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
+  throw new Error("Paste your Discord bot token into TOKEN in the BOT CONFIGURATION section.");
+}
+if (GUILD_ID === "PUT_YOUR_SERVER_ID_HERE" || !/^\d{17,20}$/.test(GUILD_ID)) {
+  throw new Error("Paste a valid server ID into GUILD_ID in the BOT CONFIGURATION section.");
+}
+
+// ============================================================
+//                END OF BOT CONFIGURATION
+// ============================================================
 
 const client = new Client({
   intents: [
