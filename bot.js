@@ -643,6 +643,9 @@ function commandErrorMessage(error) {
   if (code === 10008) return "That message could not be found.";
   if (code === 10011) return "That role could not be found.";
   if (code === 10003) return "That channel could not be found.";
+  if (typeof error?.code === "string" && error.code.startsWith("SQLITE_")) {
+    return "I couldn't save that change. Please try again.";
+  }
 
   if (error instanceof Error && !error.rawError && !error.requestBody && !error.name?.includes("DiscordAPIError")) {
     return error.message;
@@ -756,8 +759,9 @@ async function createTicket(context, category = "support") {
       createdAt: Date.now()
     });
   } catch (error) {
+    console.error("Could not save the new ticket:", error);
     await ticketChannel.delete("Ticket database save failed").catch(() => {});
-    throw new Error(`Ticket could not be saved and its channel was cleaned up where possible: ${error.message}`);
+    throw new Error("I couldn't save the ticket. Please try again.");
   }
   try {
     await ticketChannel.send({
@@ -767,9 +771,10 @@ async function createTicket(context, category = "support") {
       allowedMentions: { users: [user.id] }
     });
   } catch (error) {
+    console.error("Could not finish setting up the ticket:", error);
     statements.updateTicketStatus.run("deleted", Date.now(), ticketChannel.id);
     await ticketChannel.delete("Ticket setup failed; cleaning up").catch(() => {});
-    throw new Error(`Ticket was created but its welcome message failed. The channel was cleaned up where possible: ${error.message}`);
+    throw new Error("The ticket was created, but I couldn't finish setting it up. Please contact the staff team.");
   }
   logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${number}`);
   await reply(context, `Your ticket has been created: <#${ticketChannel.id}>.`);
@@ -915,8 +920,9 @@ async function deleteTicket(context) {
   try {
     await ticketSupport.createTranscript(context.channel, ticket, context.guild, logAction);
   } catch (error) {
+    console.error("Could not save the ticket transcript before deletion:", error);
     logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
-    throw new Error("The transcript could not be saved, so the ticket was not deleted: " + error.message);
+    throw new Error("I couldn't save the transcript, so the ticket was left in place.");
   }
   if (context.isInteraction) {
     await reply(context, `Ticket #${ticket.number} deleted.`);
@@ -985,9 +991,10 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
     const linked = statements.setGiveawayMessage.run(giveawayMessage.id, id);
     if (!linked.changes) throw new Error("Could not link the giveaway message to its database record.");
   } catch (error) {
+    console.error("Could not finish creating the giveaway:", error);
     if (giveawayMessage) await giveawayMessage.delete("Giveaway setup failed").catch(() => {});
     statements.deleteGiveaway.run(id);
-    throw new Error(`Giveaway creation failed and its database record was rolled back: ${error.message}`);
+    throw new Error("I couldn't post the giveaway. Check the bot's channel permissions and try again.");
   }
   logAction(context.guild.id, context.user.id, "giveaway_create", null, `Giveaway #${id}: ${prize}`);
   scheduleGiveawayEnd(id, context.guild.id, endsAt);
