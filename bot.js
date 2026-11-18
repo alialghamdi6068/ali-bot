@@ -341,7 +341,7 @@ const utils = (() => {
   ].sort((a, b) => b[0].length - a[0].length);
 
   function resolvePrefixCommand(input) {
-    const normalized = input.trim().toLocaleLowerCase("ar");
+    const normalized = input.trim().replace(/\s+/g, " ").toLocaleLowerCase("ar");
     for (const [label, command] of PREFIX_COMMANDS) {
       if (normalized === label || normalized.startsWith(label + " ")) {
         return { command, consumed: label.split(/\s+/).length };
@@ -598,6 +598,8 @@ function logAction(guildId, actorId, action, targetId, details) {
       if (targetId) {
         if (action.startsWith("channel_") || action === "ticket_create" || action === "log_channel_config") {
           target = "<#" + targetId + ">";
+        } else if (action === "ticket_panel_publish") {
+          target = "Message " + targetId;
         } else if (action.startsWith("role_")) {
           target = "<@&" + targetId + ">";
         } else if (/^\d{17,20}$/.test(targetId)) {
