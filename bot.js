@@ -1,7 +1,5 @@
 // Ali Bot — single-file Discord.js application.
-// Configuration stays in .env. All bot systems and runtime logic live here.
-
-require("dotenv").config();
+// Add your bot token and server ID in the configuration section below.
 
 const {
   Client,
@@ -486,15 +484,16 @@ const ticketSupport = (() => {
 })();
 
 // Main bot
-const requiredEnv = ["DISCORD_TOKEN", "GUILD_ID"];
-for (const key of requiredEnv) {
-  if (!process.env[key]?.trim()) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-}
+// Configuration — enter your values here before starting the bot.
+const TOKEN = "PASTE_YOUR_BOT_TOKEN_HERE";
+const GUILD_ID = "PASTE_YOUR_SERVER_ID_HERE";
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const GUILD_ID = process.env.GUILD_ID;
+if (TOKEN === "PASTE_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
+  throw new Error("Add your Discord bot token to TOKEN in bot.js.");
+}
+if (GUILD_ID === "PASTE_YOUR_SERVER_ID_HERE" || !/^\d{17,20}$/.test(GUILD_ID)) {
+  throw new Error("Add a valid Discord server ID to GUILD_ID in bot.js.");
+}
 const PREFIX = "!";
 const DEFAULT_REASON = "No reason provided.";
 
@@ -1774,7 +1773,7 @@ process.on("unhandledRejection", error => console.error("Unhandled rejection:", 
 
 if (require.main === module) {
   client.login(TOKEN).catch(error => {
-    console.error("Failed to log in. Check DISCORD_TOKEN and bot configuration.", error);
+    console.error("Failed to log in. Check TOKEN in the bot.js configuration section.", error);
     process.exitCode = 1;
   });
 }
