@@ -614,10 +614,14 @@ function getMember(guild, user) {
 async function reply(context, content, ephemeral = true) {
   if (context.isInteraction) {
     const payload = typeof content === "string" ? { content } : content;
-    if (context.replied || context.deferred) return context.followUp({ ...payload, flags: ephemeral ? MessageFlags.Ephemeral : undefined });
-    return context.reply({ ...payload, flags: ephemeral ? MessageFlags.Ephemeral : undefined });
+    const response = { ...payload, flags: ephemeral ? MessageFlags.Ephemeral : undefined };
+
+    if (context.deferred) return context.editReply(payload);
+    if (context.replied) return context.followUp(response);
+    return context.reply(response);
   }
-  return context.reply(typeof content === "string" ? content : content);
+
+  return context.reply(content);
 }
 
 function getTicket(channelId) {
@@ -752,25 +756,32 @@ async function handleTicketInteraction(interaction) {
     channel: interaction.channel,
     isInteraction: true,
     reply: interaction.reply.bind(interaction),
+    editReply: interaction.editReply.bind(interaction),
     followUp: interaction.followUp.bind(interaction),
-    replied: interaction.replied,
-    deferred: interaction.deferred
+    get replied() {
+      return interaction.replied;
+    },
+    get deferred() {
+      return interaction.deferred;
+    }
   };
 
   if (parts[1] === "create") {
     const category = parts[2];
     if (!["support", "complaint", "partnership"].includes(category)) return false;
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await createTicket(context, category);
     return true;
   }
 
   if (parts[1] === "action") {
     const action = parts[2];
+    if (!["close", "claim", "reopen", "delete"].includes(action)) return false;
+    if (action === "delete") await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (action === "close") await closeTicket(context);
     else if (action === "claim") await claimTicket(context);
     else if (action === "reopen") await reopenTicket(context);
-    else if (action === "delete") await deleteTicket(context);
-    else return false;
+    else await deleteTicket(context);
     return true;
   }
 
@@ -798,13 +809,15 @@ async function handleTicketInteraction(interaction) {
     return true;
   }
 
+  await interaction.deferUpdate();
+
   try {
     await ticketSupport.createTranscript(channel, ticket, interaction.guild, logAction);
   } catch (error) {
     console.error("Ticket transcript failed:", error);
     logAction(interaction.guild.id, interaction.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
-    await interaction.update({
-      content: "The transcript could not be saved. This ticket is still open; please try again later.",
+    await interaction.editReply({
+      content: "I couldn't save the transcript, so the ticket is still open. Please try again later.",
       components: []
     });
     return true;
@@ -813,8 +826,8 @@ async function handleTicketInteraction(interaction) {
   await channel.permissionOverwrites.edit(ticket.user_id, { SendMessages: false, AttachFiles: false });
   statements.updateTicketStatus.run("closed", Date.now(), channelId);
   logAction(interaction.guild.id, interaction.user.id, "ticket_close", ticket.user_id, "Ticket #" + ticket.number);
-  await interaction.update({
-    content: "Ticket #" + ticket.number + " has been closed. The transcript was saved successfully.",
+  await interaction.editReply({
+    content: "Ticket #" + ticket.number + " is closed. The transcript has been saved.",
     components: []
   });
   await channel.send({
@@ -1830,6 +1843,7 @@ client.on("interactionCreate", async interaction => {
       channel: interaction.channel,
       isInteraction: true,
       reply: interaction.reply.bind(interaction),
+      editReply: interaction.editReply.bind(interaction),
       followUp: interaction.followUp.bind(interaction),
       get replied() {
         return interaction.replied;
@@ -1838,12 +1852,17 @@ client.on("interactionCreate", async interaction => {
         return interaction.deferred;
       }
     };
+
+    const publicReplies = new Set(["lock", "unlock", "slowmode", "reopen", "add", "remove", "claim", "ticketconfig"]);
+    const isPublic = publicReplies.has(name) || (name === "logs" && Boolean(data.channel));
+    await interaction.deferReply(isPublic ? {} : { flags: MessageFlags.Ephemeral });
     await execute(context, name, data);
   } catch (error) {
     console.error("Slash command failed:", error);
     const payload = { content: commandErrorMessage(error), flags: MessageFlags.Ephemeral };
     if (interaction.isRepliable()) {
-      if (interaction.replied || interaction.deferred) await interaction.followUp(payload).catch(() => {});
+      if (interaction.deferred) await interaction.editReply(payload).catch(() => {});
+      else if (interaction.replied) await interaction.followUp(payload).catch(() => {});
       else await interaction.reply(payload).catch(() => {});
     }
   }
