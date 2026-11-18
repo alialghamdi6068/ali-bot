@@ -759,7 +759,6 @@ async function createTicket(context, category = "support") {
     await ticketChannel.delete("Ticket database save failed").catch(() => {});
     throw new Error(`Ticket could not be saved and its channel was cleaned up where possible: ${error.message}`);
   }
-  logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${number}`);
   try {
     await ticketChannel.send({
       content: `<@!${user.id}>`,
@@ -772,6 +771,7 @@ async function createTicket(context, category = "support") {
     await ticketChannel.delete("Ticket setup failed; cleaning up").catch(() => {});
     throw new Error(`Ticket was created but its welcome message failed. The channel was cleaned up where possible: ${error.message}`);
   }
+  logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${number}`);
   await reply(context, `Your ticket has been created: <#${ticketChannel.id}>.`);
 }
 
@@ -1731,7 +1731,7 @@ client.on("messageDelete", async message => {
   if (!message.guild || message.author?.bot) return;
   const content = (message.content || "[No cached message content]").slice(0, 1500);
   const actorId = await findAuditExecutor(message.guild, AuditLogEvent.MessageDelete, message.author?.id);
-  logAction(message.guild.id, actorId || message.author?.id || "system", "message_delete",
+  logAction(message.guild.id, actorId || "system", "message_delete",
     message.author?.id, "Channel #" + message.channel?.name + ": " + content);
 });
 
@@ -1791,7 +1791,10 @@ client.on("channelUpdate", async (oldChannel, newChannel) => {
   if (oldChannel.name !== newChannel.name) changes.push("Name: " + oldChannel.name + " → " + newChannel.name);
   if (oldChannel.topic !== newChannel.topic) changes.push("Topic changed");
   if (oldChannel.parentId !== newChannel.parentId) changes.push("Category changed");
-  if (changes.length) logAction(newChannel.guild.id, client.user.id, "channel_update", newChannel.id, changes.join("\n"));
+  if (changes.length) {
+    const actorId = await findAuditExecutor(newChannel.guild, AuditLogEvent.ChannelUpdate, newChannel.id);
+    logAction(newChannel.guild.id, actorId || "system", "channel_update", newChannel.id, changes.join("\n"));
+  }
 });
 
 client.on("channelDelete", async channel => {
@@ -1816,7 +1819,10 @@ client.on("roleUpdate", async (oldRole, newRole) => {
   if (oldRole.name !== newRole.name) changes.push("Name: " + oldRole.name + " → " + newRole.name);
   if (oldRole.color !== newRole.color) changes.push("Color changed");
   if (oldRole.permissions.bitfield !== newRole.permissions.bitfield) changes.push("Permissions changed");
-  if (changes.length) logAction(newRole.guild.id, client.user.id, "role_update", newRole.id, changes.join("\n"));
+  if (changes.length) {
+    const actorId = await findAuditExecutor(newRole.guild, AuditLogEvent.RoleUpdate, newRole.id);
+    logAction(newRole.guild.id, actorId || "system", "role_update", newRole.id, changes.join("\n"));
+  }
 });
 
 client.on("roleDelete", async role => {
