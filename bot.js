@@ -1,5 +1,5 @@
 // Ali Bot — single-file Discord.js application.
-// Add your bot token and server ID in the configuration section below.
+// Add your bot token in the configuration section below.
 
 const {
   Client,
@@ -493,22 +493,15 @@ const ticketSupport = (() => {
 // Discord Developer Portal → Your Application → Bot → Reset Token / Copy
 const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
 
-// 2) SERVER (GUILD) ID
-// Enable Developer Mode in Discord, then right-click your server → Copy Server ID
-const GUILD_ID = "PUT_YOUR_SERVER_ID_HERE";
-
-// 3) PREFIX FOR ARABIC TEXT COMMANDS
+// 2) PREFIX FOR ARABIC TEXT COMMANDS
 const PREFIX = "!";
 
-// 4) DEFAULT REASON USED WHEN A MODERATION REASON IS OMITTED
+// 3) DEFAULT REASON USED WHEN A MODERATION REASON IS OMITTED
 const DEFAULT_REASON = "No reason provided.";
 
 // Configuration validation — do not edit this section.
 if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
   throw new Error("Paste your Discord bot token into TOKEN in the BOT CONFIGURATION section.");
-}
-if (GUILD_ID === "PUT_YOUR_SERVER_ID_HERE" || !/^\d{17,20}$/.test(GUILD_ID)) {
-  throw new Error("Paste a valid server ID into GUILD_ID in the BOT CONFIGURATION section.");
 }
 
 // ============================================================
@@ -718,7 +711,7 @@ async function closeTicket(context) {
 
 async function handleTicketInteraction(interaction) {
   if (!interaction.isButton() || !interaction.customId.startsWith("ticket:")) return false;
-  if (!interaction.guild || interaction.guild.id !== GUILD_ID) return false;
+  if (!interaction.guild) return false;
 
   const parts = interaction.customId.split(":");
   const context = {
@@ -904,7 +897,7 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
     throw new Error(`Giveaway creation failed and its database record was rolled back: ${error.message}`);
   }
   logAction(context.guild.id, context.user.id, "giveaway_create", null, `Giveaway #${id}: ${prize}`);
-  scheduleGiveawayEnd(id, endsAt);
+  scheduleGiveawayEnd(id, context.guild.id, endsAt);
   await reply(context, `Giveaway #${id} created in <#${destination.id}>.`);
 }
 
@@ -957,17 +950,17 @@ function finishGiveaway(giveaway, reroll = false) {
 }
 
 const giveawayTimers = new Map();
-function scheduleGiveawayEnd(id, endsAt) {
+function scheduleGiveawayEnd(id, guildId, endsAt) {
   if (giveawayTimers.has(id)) clearTimeout(giveawayTimers.get(id));
   const delay = Math.max(0, endsAt - Date.now());
   const timer = setTimeout(async () => {
-    const giveaway = statements.getGiveaway.get(id, GUILD_ID);
+    const giveaway = statements.getGiveaway.get(id, guildId);
     if (!giveaway || giveaway.status !== "active") {
       giveawayTimers.delete(id);
       return;
     }
     if (giveaway.ends_at > Date.now()) {
-      scheduleGiveawayEnd(id, giveaway.ends_at);
+      scheduleGiveawayEnd(id, guildId, giveaway.ends_at);
       return;
     }
     try {
@@ -975,7 +968,7 @@ function scheduleGiveawayEnd(id, endsAt) {
       giveawayTimers.delete(id);
     } catch (error) {
       console.error(`Failed to finish giveaway #${id}:`, error);
-      scheduleGiveawayEnd(id, Date.now() + 60_000);
+      scheduleGiveawayEnd(id, guildId, Date.now() + 60_000);
     }
   }, Math.min(delay, 2_147_000_000));
   timer.unref?.();
@@ -1352,7 +1345,7 @@ function parseMention(message, token) {
 }
 
 async function handlePrefix(message) {
-  if (message.author.bot || !message.guild || message.guild.id !== GUILD_ID || !message.content.startsWith(PREFIX)) return;
+  if (message.author.bot || !message.guild || !message.content.startsWith(PREFIX)) return;
   const resolved = resolvePrefixCommand(message.content.slice(PREFIX.length).trim());
   if (!resolved) return;
   const { command, consumed } = resolved;
@@ -1495,11 +1488,10 @@ async function handlePrefix(message) {
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   try {
-    const configuredGuild = await client.guilds.fetch(GUILD_ID);
-    await configuredGuild.commands.set(slashCommands);
-    console.log(`Registered ${slashCommands.length} slash commands for guild ${GUILD_ID}.`);
+    await client.application.commands.set(slashCommands);
+    console.log(`Registered ${slashCommands.length} global slash commands.`);
   } catch (error) {
-    console.error("Failed to register guild slash commands:", error);
+    console.error("Failed to register global slash commands:", error);
   }
 
   client.user.setPresence({
@@ -1512,7 +1504,7 @@ client.once("ready", async () => {
   });
 
   for (const giveaway of statements.getActiveGiveaways.all()) {
-    scheduleGiveawayEnd(giveaway.id, giveaway.ends_at);
+    scheduleGiveawayEnd(giveaway.id, giveaway.guild_id, giveaway.ends_at);
   }
 });
 
@@ -1521,7 +1513,7 @@ const SPAM_WINDOW_MS = 5000;
 const SPAM_LIMIT = 5;
 
 async function handleSecurity(message) {
-  if (!message.guild || message.guild.id !== GUILD_ID || message.author?.bot || !message.member) return true;
+  if (!message.guild || message.author?.bot || !message.member) return true;
   if (message.member.permissions.has(PermissionFlagsBits.ManageGuild) ||
       message.member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (statements.getSetting.get("security_enabled")?.value === "false") return true;
@@ -1585,7 +1577,7 @@ async function findAuditExecutor(guild, eventType, targetId) {
 }
 
 function isConfiguredGuild(guild) {
-  return Boolean(guild && guild.id === GUILD_ID);
+  return Boolean(guild);
 }
 
 client.on("messageDelete", async message => {
@@ -1703,7 +1695,7 @@ client.on("interactionCreate", async interaction => {
   try {
     if (await handleTicketInteraction(interaction)) return;
     if (interaction.isButton() && interaction.customId.startsWith("giveaway:enter:")) {
-      if (!interaction.guild || interaction.guild.id !== GUILD_ID) return;
+      if (!interaction.guild) return;
       const id = Number(interaction.customId.split(":")[2]);
       const giveaway = statements.getGiveaway.get(id, interaction.guild.id);
       if (!giveaway || giveaway.status !== "active" || giveaway.ends_at <= Date.now()) {
@@ -1717,9 +1709,7 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild || interaction.guild.id !== GUILD_ID) {
-      return interaction.reply({ content: "This bot is configured for one server only.", flags: MessageFlags.Ephemeral });
-    }
+    if (!interaction.guild) return;
 
     const name = interaction.commandName;
     const data = {};
