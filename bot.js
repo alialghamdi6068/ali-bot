@@ -162,7 +162,7 @@ const database = (() => {
     getGuildSetting: db.prepare("SELECT value FROM guild_settings WHERE guild_id = ? AND key = ?"),
     setGuildSetting: db.prepare("INSERT INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?) ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value"),
     setGuildSettingIfMissing: db.prepare("INSERT OR IGNORE INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?)"),
-      addLog: db.prepare(`
+    addLog: db.prepare(`
       INSERT INTO logs(guild_id, actor_id, action, target_id, details, created_at)
       VALUES(?, ?, ?, ?, ?, ?)
     `),
@@ -172,7 +172,7 @@ const database = (() => {
     getBlockedWords: db.prepare("SELECT word FROM blocked_words WHERE guild_id = ? ORDER BY word COLLATE NOCASE"),
     saveTranscript: db.prepare("INSERT INTO ticket_transcripts(ticket_id, guild_id, content, created_at) VALUES(?, ?, ?, ?)"),
   };
-    return { db, statements };
+  return { db, statements };
 })();
 const { statements } = database;
 
@@ -368,7 +368,7 @@ const utils = (() => {
       timeZone: "UTC"
     }).format(date);
   }
-    return { resolvePrefixCommand, parseDuration, formatDate };
+  return { resolvePrefixCommand, parseDuration, formatDate };
 })();
 const { resolvePrefixCommand, parseDuration, formatDate } = utils;
 
@@ -406,7 +406,7 @@ const permissions = (() => {
       throw new Error("I cannot change roles for a member with a role equal to or higher than my highest role.");
     }
   }
-    return { assertCanModerateMember, assertCanManageRole };
+  return { assertCanModerateMember, assertCanManageRole };
 })();
 const { assertCanModerateMember, assertCanManageRole } = permissions;
 
