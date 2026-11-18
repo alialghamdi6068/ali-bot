@@ -1069,7 +1069,7 @@ async function moderation(context, name, data) {
 
 async function execute(context, name, data = {}) {
   const { guild, member, user, channel } = context;
-  if (!guild || !isInConfiguredGuild(guild)) throw new Error("This bot is configured for one server only.");
+  if (!guild) throw new Error("This command can only be used inside a server.");
 
   if (["ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarn"].includes(name)) {
     return moderation(context, name, data);
