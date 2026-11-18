@@ -1859,11 +1859,15 @@ client.on("interactionCreate", async interaction => {
     await execute(context, name, data);
   } catch (error) {
     console.error("Slash command failed:", error);
-    const payload = { content: commandErrorMessage(error), flags: MessageFlags.Ephemeral };
+    const content = commandErrorMessage(error);
+
     if (interaction.isRepliable()) {
-      if (interaction.deferred) await interaction.editReply(payload).catch(() => {});
-      else if (interaction.replied) await interaction.followUp(payload).catch(() => {});
-      else await interaction.reply(payload).catch(() => {});
+      if (interaction.deferred) await interaction.editReply({ content }).catch(() => {});
+      else if (interaction.replied) {
+        await interaction.followUp({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+      } else {
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
     }
   }
 });
