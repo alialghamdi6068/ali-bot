@@ -1,5 +1,3 @@
-// Ali Bot — single-file Discord.js application.
-// Add your bot token in the configuration section below.
 
 const {
   Client,
@@ -19,7 +17,6 @@ const {
 } = require("discord.js");
 const { randomInt } = require("node:crypto");
 
-// Database and persistent storage
 const database = (() => {
 const fs = require("node:fs");
 const path = require("node:path");
@@ -170,7 +167,6 @@ const statements = {
 })();
 const { statements } = database;
 
-// Slash command definitions
 const slashCommands = (() => {
   const { SlashCommandBuilder, ChannelType } = require("discord.js");
   const commands = [  new SlashCommandBuilder().setName("ban").setDescription("Ban a member")
@@ -279,7 +275,6 @@ const slashCommands = (() => {
   return commands;
 })();
 
-// Shared helpers
 const utils = (() => {
 const PREFIX_COMMANDS = [
   ["فك حظر", "unban"],
@@ -335,7 +330,6 @@ const PREFIX_COMMANDS = [
   ["لوق", "logs"]
 ].sort((a, b) => b[0].length - a[0].length);
 
-
 function resolvePrefixCommand(input) {
   const normalized = input.trim().toLocaleLowerCase("ar");
   for (const [label, command] of PREFIX_COMMANDS) {
@@ -368,7 +362,6 @@ function formatDate(date) {
 })();
 const { resolvePrefixCommand, parseDuration, formatDate } = utils;
 
-// Permission and role hierarchy checks
 const permissions = (() => {
 function assertCanModerateMember({ actor, target, bot, guild }) {
   if (!actor || !target || !bot) throw new Error("Could not verify member role hierarchy.");
@@ -407,7 +400,6 @@ function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }
 })();
 const { assertCanModerateMember, assertCanManageRole } = permissions;
 
-// Supporting systems used by the bot
 const ticketSupport = (() => {
   const setting = key => statements.getSetting.get(key)?.value ?? "";
   const setSetting = (key, value) => statements.setSetting.run(key, String(value ?? ""));
@@ -483,30 +475,15 @@ const ticketSupport = (() => {
   return { setting, setSetting, createTranscript };
 })();
 
-// Main bot
-// ============================================================
-//                  BOT CONFIGURATION
-//        EDIT THE VALUES IN THIS SECTION BEFORE STARTING
-// ============================================================
-
-// 1) BOT TOKEN
-// Discord Developer Portal → Your Application → Bot → Reset Token / Copy
 const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
 
-// 2) PREFIX FOR ARABIC TEXT COMMANDS
 const PREFIX = "!";
 
-// 3) DEFAULT REASON USED WHEN A MODERATION REASON IS OMITTED
 const DEFAULT_REASON = "No reason provided.";
 
-// Configuration validation — do not edit this section.
 if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
   throw new Error("Paste your Discord bot token into TOKEN in the BOT CONFIGURATION section.");
 }
-
-// ============================================================
-//                END OF BOT CONFIGURATION
-// ============================================================
 
 const client = new Client({
   intents: [
@@ -966,7 +943,6 @@ async function finishGiveawayInternal(giveaway, reroll = false) {
     new ButtonBuilder().setCustomId(`giveaway:ended:${giveaway.id}`).setLabel("Giveaway Ended").setStyle(ButtonStyle.Secondary).setDisabled(true)
   );
 
-  // Only persist the ended state after Discord confirms the public giveaway message was updated.
   await message.edit({ embeds: [embed], components: [row] });
   if (!reroll) {
     const ended = statements.endGiveaway.run(giveaway.id);
