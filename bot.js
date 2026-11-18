@@ -286,70 +286,6 @@ const slashCommands = (() => {
 })();
 
 const utils = (() => {
-  const PREFIX_COMMANDS = [
-    ["فك حظر", "unban"],
-    ["إلغاء تايم", "untimeout"],
-    ["الغاء تايم", "untimeout"],
-    ["مسح تحذير", "clearwarn"],
-    ["عرض تحذيرات", "warnings"],
-    ["تحذيرات", "warnings"],
-    ["إغلاق تكت", "close"],
-    ["فتح تكت", "reopen"],
-    ["حذف تكت", "delete"],
-    ["إضافة عضو", "add"],
-    ["اضافة عضو", "add"],
-    ["ازالة عضو", "remove"],
-    ["إزالة عضو", "remove"],
-    ["استلام تكت", "claim"],
-    ["إنهاء قيفواي", "endgiveaway"],
-    ["انهاء قيفواي", "endgiveaway"],
-    ["اعادة سحب", "reroll"],
-    ["إعادة سحب", "reroll"],
-    ["سحب رتبة", "removerole"],
-    ["معلومات السيرفر", "serverinfo"],
-    ["حظر", "ban"],
-    ["طرد", "kick"],
-    ["تايم", "timeout"],
-    ["تحذير", "warn"],
-    ["تكت", "ticket"],
-    ["قيفوايات", "giveawaylist"],
-    ["قيفواي", "giveaway"],
-    ["قول", "say"],
-    ["dm", "dm"],
-    ["رتبة", "role"],
-    ["مسح", "clear"],
-    ["تنظيف", "purge"],
-    ["أوامر", "commands"],
-    ["اوامر", "commands"],
-    ["مساعدة", "help"],
-    ["معلومات", "userinfo"],
-    ["بينق", "ping"],
-    ["قفل", "lock"],
-    ["قفل الروم", "lock"],
-    ["فتح", "unlock"],
-    ["فتح الروم", "unlock"],
-    ["بطء", "slowmode"],
-    ["اعلان", "announce"],
-    ["إعلان", "announce"],
-    ["تنبيه", "notify"],
-    ["اعداد التكت", "ticketconfig"],
-    ["إعداد التكت", "ticketconfig"],
-    ["اعداد اللوق", "logsettings"],
-    ["إعداد اللوق", "logsettings"],
-    ["حماية", "security"],
-    ["لوق", "logs"]
-  ].sort((a, b) => b[0].length - a[0].length);
-
-  function resolvePrefixCommand(input) {
-    const normalized = input.trim().replace(/\s+/g, " ").toLocaleLowerCase("ar");
-    for (const [label, command] of PREFIX_COMMANDS) {
-      if (normalized === label || normalized.startsWith(label + " ")) {
-        return { command, consumed: label.split(/\s+/).length };
-      }
-    }
-    return null;
-  }
-
   function parseDuration(value) {
     if (typeof value !== "string") return null;
     const match = value.trim().match(/^(\d+)(s|m|h|d)$/i);
@@ -368,9 +304,9 @@ const utils = (() => {
       timeZone: "UTC"
     }).format(date);
   }
-  return { resolvePrefixCommand, parseDuration, formatDate };
+  return { parseDuration, formatDate };
 })();
-const { resolvePrefixCommand, parseDuration, formatDate } = utils;
+const { parseDuration, formatDate } = utils;
 
 const permissions = (() => {
   function assertCanModerateMember({ actor, target, bot, guild }) {
@@ -486,8 +422,6 @@ const ticketSupport = (() => {
 })();
 
 const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
-
-const PREFIX = "!";
 
 const DEFAULT_REASON = "No reason provided.";
 
@@ -1339,12 +1273,7 @@ async function execute(context, name, data = {}) {
         "**Security**",
         "`/security enable` • `/security disable` • `/security addword` • `/security removeword` • `/security list` • `/security antispam`",
         "**Information**",
-        "`/userinfo` • `/serverinfo` • `/ping` • `/help` • `/commands`",
-        "**Arabic prefix commands**",
-        "`!حظر` • `!فك حظر` • `!طرد` • `!تايم` • `!إلغاء تايم` • `!تحذير` • `!عرض تحذيرات` • `!مسح تحذير` • `!مسح` • `!تنظيف`",
-        "`!تكت` • `!إغلاق تكت` • `!فتح تكت` • `!حذف تكت` • `!إضافة عضو` • `!إزالة عضو` • `!استلام تكت`",
-        "`!قيفواي` • `!قيفوايات` • `!إنهاء قيفواي` • `!إعادة سحب` • `!قول` • `!dm` • `!رتبة` • `!سحب رتبة`",
-        "`!قفل` • `!فتح` • `!بطء` • `!اعلان` • `!تنبيه` • `!إعداد التكت` • `!اعداد اللوق` • `!حماية` • `!لوق`"
+        "`/userinfo` • `/serverinfo` • `/ping` • `/help` • `/commands`"
       ].join("\n"));
       await reply(context, { embeds: [embed] });
       break;
@@ -1439,157 +1368,7 @@ async function execute(context, name, data = {}) {
       break;
     }
     default:
-      throw new Error("Unknown command. Use !مساعدة or /help.");
-  }
-}
-
-function parseMention(message, token) {
-  const id = token?.replace(/[<@!>]/g, "");
-  if (/^\d{17,20}$/.test(id ?? "")) return client.users.fetch(id);
-  return message.mentions.users.first() ?? null;
-}
-
-async function handlePrefix(message) {
-  if (message.author.bot || !message.guild || !message.content.startsWith(PREFIX)) return;
-  const resolved = resolvePrefixCommand(message.content.slice(PREFIX.length).trim());
-  if (!resolved) return;
-  const { command, consumed } = resolved;
-  const raw = message.content.slice(PREFIX.length).trim().split(/\s+/).slice(consumed).join(" ").trim();
-  const args = raw.split(/\s+/).filter(Boolean);
-  const context = {
-    guild: message.guild,
-    member: message.member,
-    user: message.author,
-    channel: message.channel,
-    isInteraction: false,
-    reply: message.reply.bind(message)
-  };
-
-  try {
-    let data = {};
-    const target = async (index = 0) => {
-      const user = await parseMention(message, args[index]);
-      if (!user) throw new Error("Mention a valid member or provide their user ID.");
-      return user;
-    };
-    const reasonAfterTarget = (index = 1) => args.slice(index).join(" ").trim();
-
-    switch (command) {
-      case "ban": case "kick": case "untimeout": case "warnings":
-        data.target = await target();
-        data.reason = reasonAfterTarget();
-        break;
-      case "unban":
-        data.userId = args[0]?.replace(/[<@!>]/g, "");
-        if (!/^\d{17,20}$/.test(data.userId ?? "")) throw new Error("Provide a valid user ID.");
-        data.reason = args.slice(1).join(" ");
-        break;
-      case "timeout":
-        data.target = await target();
-        data.duration = args[1];
-        data.reason = reasonAfterTarget(2);
-        if (!data.duration) throw new Error("Usage: !تايم @member 10m reason");
-        break;
-      case "warn":
-        data.target = await target();
-        data.reason = reasonAfterTarget();
-        if (!data.reason) throw new Error("Usage: !تحذير @member reason");
-        break;
-      case "clearwarn":
-        data.target = await target();
-        data.warningId = Number(args[1]);
-        if (!Number.isInteger(data.warningId)) throw new Error("Usage: !مسح تحذير @member warning_id");
-        break;
-      case "clear": case "purge":
-        data.amount = Number(args[0]);
-        break;
-      case "add": case "remove": case "dm":
-        data.target = await target();
-        if (command === "dm") {
-          data.message = reasonAfterTarget();
-          if (!data.message) throw new Error("Usage: !dm @member message");
-        }
-        break;
-      case "role": case "removerole": {
-        data.target = await target();
-        const role = message.mentions.roles.first();
-        if (!role) throw new Error("Mention a role.");
-        data.role = role;
-        break;
-      }
-      case "say":
-        data.message = raw;
-        if (!data.message) throw new Error("Usage: !قول message");
-        break;
-      case "giveaway": {
-        const durationIndex = args.findIndex(part => /^\d+[smhd]$/i.test(part));
-        const duration = args[durationIndex];
-        const winnersCount = Number(args[durationIndex + 1]);
-        const prize = args.slice(durationIndex + 2).join(" ");
-        if (!duration || !prize || !Number.isInteger(winnersCount)) throw new Error("Usage: !قيفواي 10m 1 prize name");
-        data = { duration, winnersCount, prize };
-        break;
-      }
-      case "endgiveaway": case "reroll":
-        data.giveawayId = Number(args[0]);
-        if (!Number.isInteger(data.giveawayId)) throw new Error("Provide a giveaway ID.");
-        break;
-      case "slowmode":
-        data.seconds = Number(args[0]);
-        break;
-      case "announce":
-        data.message = raw;
-        break;
-      case "notify": {
-        data.role = message.mentions.roles.first() ?? null;
-        data.message = data.role ? raw.replace("<@&" + data.role.id + ">", "").trim() : raw;
-        break;
-      }
-      case "ticket":
-        data.category = ({ "دعم": "support", "شكوى": "complaint", "شراكة": "partnership" })[args[0]] ?? args[0] ?? "support";
-        break;
-      case "ticketconfig": {
-        const mentioned = [...message.mentions.channels.values()];
-        data.transcriptChannel = mentioned[0];
-        data.supportCategory = mentioned[1];
-        data.complaintCategory = mentioned[2];
-        data.partnershipCategory = mentioned[3];
-        data.panelChannel = mentioned[4];
-        break;
-      }
-      case "logs":
-        data.channel = message.mentions.channels.first() ?? null;
-        if (args.length && !data.channel) throw new Error("Mention a text channel to configure automatic logs.");
-        break;
-      case "security": {
-        const aliases = {"تفعيل":"enable","تعطيل":"disable","اضافة":"addword","إضافة":"addword","حذف":"removeword","قائمة":"list","سبام":"antispam"};
-        data.subcommand = aliases[args[0]] || args[0];
-        if (["addword","removeword"].includes(data.subcommand)) data.word = args.slice(1).join(" ");
-        if (data.subcommand === "antispam") {
-          if (!["on","off","تشغيل","ايقاف","إيقاف"].includes(args[1])) throw new Error("Usage: !حماية سبام on|off");
-          data.enabled = ["on","تشغيل"].includes(args[1]);
-        }
-        if (!["enable","disable","addword","removeword","list","antispam"].includes(data.subcommand)) throw new Error("Usage: !حماية تفعيل|تعطيل|اضافة|حذف|قائمة|سبام on|off");
-        break;
-      }
-      case "logsettings":
-        data.category = args[0];
-        data.enabled = ["on","تشغيل","true"].includes(args[1]);
-        if (!args[0] || !["on","off","تشغيل","ايقاف","true","false"].includes(args[1])) throw new Error("Usage: !اعداد اللوق category on|off");
-        break;
-      case "userinfo":
-        data.target = args.length ? await target() : message.author;
-        break;
-      default:
-        break;
-    }
-    await execute(context, command, data);
-  } catch (error) {
-    console.error("Prefix command failed:", error);
-    await message.reply({
-      content: commandErrorMessage(error),
-      allowedMentions: { repliedUser: false }
-    }).catch(() => {});
+      throw new Error("Unknown command. Use /help to see the available commands.");
   }
 }
 
@@ -1716,7 +1495,7 @@ client.on("messageCreate", async message => {
   let shouldContinue = true;
   try { shouldContinue = await handleSecurity(message); }
   catch (error) { console.error("Security handler error:", error); }
-  if (shouldContinue !== false) await handlePrefix(message);
+
 });
 
 async function findAuditExecutor(guild, eventType, targetId) {
@@ -1966,4 +1745,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { resolvePrefixCommand, parseDuration, formatDate };
+module.exports = { parseDuration, formatDate };
