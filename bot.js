@@ -534,6 +534,33 @@ function logCategory(action) {
 
 function logAction(guildId, actorId, action, targetId, details) {
   const message = String(details ?? "").slice(0, 3500);
+  const logTitles = {
+    message_delete: "Message deleted",
+    message_edit: "Message edited",
+    member_join: "Member joined",
+    member_leave: "Member left",
+    member_update: "Member updated",
+    member_ban: "Member banned",
+    member_unban: "Member unbanned",
+    channel_create: "Channel created",
+    channel_update: "Channel updated",
+    channel_delete: "Channel deleted",
+    channel_lock: "Channel locked",
+    channel_unlock: "Channel unlocked",
+    role_create: "Role created",
+    role_update: "Role updated",
+    role_delete: "Role deleted",
+    ticket_create: "Ticket opened",
+    ticket_close: "Ticket closed",
+    ticket_reopen: "Ticket reopened",
+    ticket_delete: "Ticket deleted",
+    ticket_claim: "Ticket claimed",
+    giveaway_create: "Giveaway started",
+    giveaway_end: "Giveaway ended",
+    security_blocked_message: "Blocked message",
+    security_spam_detected: "Spam detected"
+  };
+  const title = logTitles[action] || String(action || "Activity").replaceAll("_", " ");
 
   try {
     statements.addLog.run(guildId, actorId || "system", action, targetId ?? null, message, Date.now());
@@ -553,7 +580,7 @@ function logAction(guildId, actorId, action, targetId, details) {
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle(action.replaceAll("_", " ").toUpperCase())
+        .setTitle(title.charAt(0).toUpperCase() + title.slice(1))
         .setDescription(message || "No additional details.")
         .addFields(
           { name: "Actor", value: actorId && /^\d{17,20}$/.test(actorId) ? "<@" + actorId + ">" : (actorId || "System / unknown"), inline: true },
@@ -572,8 +599,25 @@ function hasPermission(member, permission) {
 
 function requirePermission(member, permission, label) {
   if (!hasPermission(member, permission)) {
-    throw new Error(`You need the ${label} permission to use this command.`);
+    throw new Error(`You need ${label} permission to do that.`);
   }
+}
+
+function commandErrorMessage(error) {
+  const code = Number(error?.code);
+
+  if (code === 50013) return "I don't have permission to do that.";
+  if (code === 50001) return "I can't access that channel or resource.";
+  if (code === 10007) return "That member is no longer in the server.";
+  if (code === 10008) return "That message could not be found.";
+  if (code === 10011) return "That role could not be found.";
+  if (code === 10003) return "That channel could not be found.";
+
+  if (error instanceof Error && !error.rawError && !error.requestBody && !error.name?.includes("DiscordAPIError")) {
+    return error.message;
+  }
+
+  return "Something went wrong while running that command. Try again in a moment.";
 }
 
 function getMember(guild, user) {
@@ -618,8 +662,8 @@ function ticketPanelPayload() {
     embeds: [
       new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle("Contact Staff")
-        .setDescription("Choose a category below to open a private ticket. Please do not open duplicate tickets.")
+        .setTitle("Need a hand?")
+        .setDescription("Pick the option that best fits your request. Please keep one ticket open at a time.")
     ],
     components: [row],
     allowedMentions: { parse: [] }
@@ -1105,7 +1149,7 @@ async function execute(context, name, data = {}) {
     case "announce": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new Error("Announcement must contain between 1 and 2000 characters.");
-      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("📢 Announcement").setDescription(data.message.trim()).setFooter({ text: "Announcement by " + user.tag }).setTimestamp();
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Announcement").setDescription(data.message.trim()).setFooter({ text: "Posted by " + user.tag }).setTimestamp();
       await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
       logAction(guild.id, user.id, "announce", channel.id, data.message.slice(0, 500));
       await reply(context, "Announcement sent.");
@@ -1224,7 +1268,7 @@ async function execute(context, name, data = {}) {
     }
     case "help":
     case "commands": {
-      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Ali Bot Commands").setDescription([
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Commands").setDescription([
         "**Moderation**",
         "`/ban` • `/unban` • `/kick` • `/timeout` • `/untimeout` • `/warn` • `/warnings` • `/clearwarn` • `/clear` • `/purge`",
         "**Tickets**",
@@ -1481,7 +1525,11 @@ async function handlePrefix(message) {
     }
     await execute(context, command, data);
   } catch (error) {
-    await message.reply({ content: `Error: ${error.message}`, allowedMentions: { repliedUser: false } }).catch(() => {});
+    console.error("Prefix command failed:", error);
+    await message.reply({
+      content: commandErrorMessage(error),
+      allowedMentions: { repliedUser: false }
+    }).catch(() => {});
   }
 }
 
@@ -1522,7 +1570,7 @@ async function handleSecurity(message) {
   if (!content) return true;
 
   const blockedWords = statements.getBlockedWords.all(message.guild.id).map(row => row.word);
-  const tokens = content.split(/[^\\p{L}\\p{N}_]+/u);
+  const tokens = content.split(/[^\p{L}\p{N}_]+/u);
   const matched = blockedWords.find(word =>
     word.includes(" ") ? content.includes(word) : tokens.includes(word)
   );
@@ -1767,8 +1815,8 @@ client.on("interactionCreate", async interaction => {
     };
     await execute(context, name, data);
   } catch (error) {
-    console.error("Command error:", error);
-    const payload = { content: `Error: ${error.message}`, flags: MessageFlags.Ephemeral };
+    console.error("Slash command failed:", error);
+    const payload = { content: commandErrorMessage(error), flags: MessageFlags.Ephemeral };
     if (interaction.isRepliable()) {
       if (interaction.replied || interaction.deferred) await interaction.followUp(payload).catch(() => {});
       else await interaction.reply(payload).catch(() => {});
