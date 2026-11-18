@@ -88,6 +88,13 @@ db.exec(`
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS guild_settings (
+    guild_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (guild_id, key)
+  );
+
   CREATE TABLE IF NOT EXISTS ticket_transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
@@ -151,8 +158,10 @@ const statements = {
   enterGiveaway: db.prepare("INSERT OR IGNORE INTO giveaway_entries(giveaway_id, user_id, entered_at) VALUES(?, ?, ?)"),
   getGiveawayEntries: db.prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?"),
   endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status = 'active'"),
-  getSetting: db.prepare("SELECT value FROM settings WHERE key = ?"),
-  setSetting: db.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
+  getLegacySettings: db.prepare("SELECT key, value FROM settings"),
+  getGuildSetting: db.prepare("SELECT value FROM guild_settings WHERE guild_id = ? AND key = ?"),
+  setGuildSetting: db.prepare("INSERT INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?) ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value"),
+  setGuildSettingIfMissing: db.prepare("INSERT OR IGNORE INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?)"),
     addLog: db.prepare(`
     INSERT INTO logs(guild_id, actor_id, action, target_id, details, created_at)
     VALUES(?, ?, ?, ?, ?, ?)
@@ -169,7 +178,8 @@ const { statements } = database;
 
 const slashCommands = (() => {
   const { SlashCommandBuilder, ChannelType } = require("discord.js");
-  const commands = [  new SlashCommandBuilder().setName("ban").setDescription("Ban a member")
+  const commands = [
+  new SlashCommandBuilder().setName("ban").setDescription("Ban a member")
     .addUserOption(o => o.setName("user").setDescription("Member to ban").setRequired(true))
     .addStringOption(o => o.setName("reason").setDescription("Reason").setMaxLength(500)),
   new SlashCommandBuilder().setName("unban").setDescription("Unban a user")
@@ -401,8 +411,8 @@ function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }
 const { assertCanModerateMember, assertCanManageRole } = permissions;
 
 const ticketSupport = (() => {
-  const setting = key => statements.getSetting.get(key)?.value ?? "";
-  const setSetting = (key, value) => statements.setSetting.run(key, String(value ?? ""));
+  const setting = (guildId, key) => statements.getGuildSetting.get(guildId, key)?.value ?? "";
+  const setSetting = (guildId, key, value) => statements.setGuildSetting.run(guildId, key, String(value ?? ""));
 
   async function createTranscript(channel, ticket, guild, logAction) {
     const messages = [];
@@ -546,9 +556,9 @@ function logAction(guildId, actorId, action, targetId, details) {
     return;
   }
 
-  const categorySetting = statements.getSetting.get("log_enabled_" + logCategory(action))?.value;
+  const categorySetting = statements.getGuildSetting.get(guildId, "log_enabled_" + logCategory(action))?.value;
   if (categorySetting === "false") return;
-  const logChannelId = statements.getSetting.get("log_channel_id")?.value;
+  const logChannelId = statements.getGuildSetting.get(guildId, "log_channel_id")?.value;
   if (!logChannelId || !client.isReady()) return;
 
   client.channels.fetch(logChannelId)
@@ -660,7 +670,7 @@ async function createTicket(context, category = "support") {
   const ticketChannel = await guild.channels.create({
     name: String(number),
     type: ChannelType.GuildText,
-    parent: ticketSupport.setting("ticket_category_" + category + "_id") || undefined,
+    parent: ticketSupport.setting(guild.id, "ticket_category_" + category + "_id") || undefined,
     topic: `Ticket #${number} | Owner: ${user.id}`,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -1166,17 +1176,19 @@ async function execute(context, name, data = {}) {
       if (!entries.some(entry => entry[1]) && !data.panelChannel) {
         throw new Error("Choose a transcript channel, ticket category, or panel channel.");
       }
-      if (data.transcriptChannel && !data.transcriptChannel.isTextBased()) throw new Error("Transcript destination must be a text channel.");
+      if (data.transcriptChannel && (!data.transcriptChannel.isTextBased() || data.transcriptChannel.guildId !== guild.id)) {
+        throw new Error("Choose a text channel from this server for transcripts.");
+      }
       if (data.panelChannel && (!data.panelChannel.isTextBased() || data.panelChannel.guildId !== guild.id)) {
         throw new Error("Ticket panel destination must be a text channel in this server.");
       }
       for (const [key, value] of entries.slice(1)) {
         if (value && value.type !== ChannelType.GuildCategory) throw new Error("Ticket parents must be category channels.");
       }
-      for (const [key, value] of entries) if (value) ticketSupport.setSetting(key, value.id);
+      for (const [key, value] of entries) if (value) ticketSupport.setSetting(guild.id, key, value.id);
       if (data.panelChannel) {
         const panel = await data.panelChannel.send(ticketPanelPayload());
-        ticketSupport.setSetting("ticket_panel_channel_id", data.panelChannel.id);
+        ticketSupport.setSetting(guild.id, "ticket_panel_channel_id", data.panelChannel.id);
         logAction(guild.id, user.id, "ticket_panel_publish", panel.id, "Ticket panel published in #" + data.panelChannel.name);
       }
       logAction(guild.id, user.id, "ticket_config", null, entries.filter(x => x[1]).map(x => x[0]).join(", "));
@@ -1299,11 +1311,11 @@ async function execute(context, name, data = {}) {
       const sub = data.subcommand;
       if (sub === "enable" || sub === "disable") {
         const enabled = sub === "enable";
-        statements.setSetting.run("security_enabled", String(enabled));
+        statements.setGuildSetting.run(guild.id, "security_enabled", String(enabled));
         logAction(guild.id, user.id, "security_config", null, "Automatic message protection " + (enabled ? "enabled" : "disabled"));
         await reply(context, "Automatic message protection is now " + (enabled ? "enabled." : "disabled."));
       } else if (sub === "antispam") {
-        statements.setSetting.run("antispam_enabled", String(Boolean(data.enabled)));
+        statements.setGuildSetting.run(guild.id, "antispam_enabled", String(Boolean(data.enabled)));
         logAction(guild.id, user.id, "security_config", null, "Anti-spam " + (data.enabled ? "enabled" : "disabled"));
         await reply(context, "Anti-spam is now " + (data.enabled ? "enabled." : "disabled."));
       } else if (sub === "addword") {
@@ -1328,7 +1340,7 @@ async function execute(context, name, data = {}) {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       const allowed = ["messages","members","channels","roles","moderation","tickets","giveaways","security","server"];
       if (!allowed.includes(data.category)) throw new Error("Unknown log category.");
-      statements.setSetting.run("log_enabled_" + data.category, String(Boolean(data.enabled)));
+      statements.setGuildSetting.run(guild.id, "log_enabled_" + data.category, String(Boolean(data.enabled)));
       await reply(context, "The **" + data.category + "** log category is now " + (data.enabled ? "enabled." : "disabled."));
       logAction(guild.id, user.id, "log_config", null, data.category + " logs " + (data.enabled ? "enabled" : "disabled"));
       break;
@@ -1339,7 +1351,7 @@ async function execute(context, name, data = {}) {
         if (data.channel.guildId !== guild.id || !data.channel.isTextBased()) {
           throw new Error("Choose a text channel from this server.");
         }
-        statements.setSetting.run("log_channel_id", data.channel.id);
+        statements.setGuildSetting.run(guild.id, "log_channel_id", data.channel.id);
         logAction(guild.id, user.id, "log_channel_config", data.channel.id, "Automatic logs channel configured");
         await reply(context, "Automatic logs will now be sent to <#" + data.channel.id + ">.", false);
         break;
@@ -1472,7 +1484,6 @@ async function handlePrefix(message) {
         data.panelChannel = mentioned[4];
         break;
       }
-        break;
       case "logs":
         data.channel = message.mentions.channels.first() ?? null;
         if (args.length && !data.channel) throw new Error("Mention a text channel to configure automatic logs.");
@@ -1509,8 +1520,42 @@ async function handlePrefix(message) {
   }
 }
 
+async function migrateLegacySettings(guilds = client.guilds.cache.values()) {
+  const legacySettings = statements.getLegacySettings.all();
+  if (!legacySettings.length) return;
+
+  for (const guild of guilds) {
+    for (const { key, value } of legacySettings) {
+      if (key.endsWith("_id")) {
+        const channel = await guild.channels.fetch(value).catch(() => null);
+        if (!channel || channel.guildId !== guild.id) continue;
+
+        if (key.startsWith("ticket_category_")) {
+          if (channel.type !== ChannelType.GuildCategory) continue;
+        } else if (!channel.isTextBased()) {
+          continue;
+        }
+      }
+
+      statements.setGuildSettingIfMissing.run(guild.id, key, value);
+    }
+  }
+}
+
+client.on("guildCreate", guild => {
+  migrateLegacySettings([guild]).catch(error => {
+    console.error("Could not migrate settings for the new server:", error);
+  });
+});
+
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
+  try {
+    await migrateLegacySettings();
+  } catch (error) {
+    console.error("Could not migrate old server settings:", error);
+  }
+
   try {
     await client.application.commands.set(slashCommands);
     console.log(`Registered ${slashCommands.length} global slash commands.`);
@@ -1521,9 +1566,8 @@ client.once("ready", async () => {
   client.user.setPresence({
     status: PresenceUpdateStatus.DoNotDisturb,
     activities: [{
-      name: "custom",
-      state: "Developed by alialghamdi_ii",
-      type: ActivityType.Custom
+      name: "your server",
+      type: ActivityType.Watching
     }]
   });
 
@@ -1537,10 +1581,10 @@ const SPAM_WINDOW_MS = 5000;
 const SPAM_LIMIT = 5;
 
 async function handleSecurity(message) {
-  if (!message.guild || message.author?.bot || !message.member) return true;
+  if (!message.guild || message.author?.bot || message.webhookId || !message.member) return true;
   if (message.member.permissions.has(PermissionFlagsBits.ManageGuild) ||
       message.member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-  if (statements.getSetting.get("security_enabled")?.value === "false") return true;
+  if (statements.getGuildSetting.get(message.guild.id, "security_enabled")?.value === "false") return true;
 
   const content = String(message.content || "").toLocaleLowerCase().trim();
   if (!content) return true;
@@ -1557,7 +1601,7 @@ async function handleSecurity(message) {
     return false;
   }
 
-  if (statements.getSetting.get("antispam_enabled")?.value === "false") return true;
+  if (statements.getGuildSetting.get(message.guild.id, "antispam_enabled")?.value === "false") return true;
   const now = Date.now();
   const key = message.guild.id + ":" + message.author.id;
   const timestamps = (recentUserMessages.get(key) || []).filter(time => now - time < SPAM_WINDOW_MS);
@@ -1786,8 +1830,13 @@ client.on("interactionCreate", async interaction => {
       channel: interaction.channel,
       isInteraction: true,
       reply: interaction.reply.bind(interaction),
-      replied: interaction.replied,
-      deferred: interaction.deferred
+      followUp: interaction.followUp.bind(interaction),
+      get replied() {
+        return interaction.replied;
+      },
+      get deferred() {
+        return interaction.deferred;
+      }
     };
     await execute(context, name, data);
   } catch (error) {
@@ -1804,10 +1853,15 @@ client.on("error", error => console.error("Discord client error:", error));
 process.on("unhandledRejection", error => console.error("Unhandled rejection:", error));
 
 if (require.main === module) {
-  client.login(TOKEN).catch(error => {
-    console.error("Failed to log in. Check TOKEN in the bot.js configuration section.", error);
+  if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
+    console.error("Add your Discord bot token to TOKEN at the top of bot.js.");
     process.exitCode = 1;
-  });
+  } else {
+    client.login(TOKEN).catch(error => {
+      console.error("Could not log in. Check the bot token and try again.", error);
+      process.exitCode = 1;
+    });
+  }
 }
 
 module.exports = { resolvePrefixCommand, parseDuration, formatDate };
