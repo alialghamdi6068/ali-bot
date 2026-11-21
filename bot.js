@@ -471,15 +471,29 @@ const ticketSupport = (() => {
       "\nMessages: " + ordered.length +
       "\n\n" + lines.join("\n\n");
 
-    statements.saveTranscript.run(ticket.id, guild.id, content, Date.now());
-
     const transcriptChannelId = setting("transcript_channel_id");
+    let target = null;
     if (transcriptChannelId) {
-      const target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
+      target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
       if (!target?.isTextBased()) {
         throw new UserInputError("The configured transcript channel is unavailable.");
       }
+      const everyonePermissions = target.permissionsFor(guild.roles.everyone);
+      const botPermissions = guild.members.me ? target.permissionsFor(guild.members.me) : null;
+      if (!everyonePermissions || everyonePermissions.has(PermissionFlagsBits.ViewChannel)) {
+        throw new UserInputError("The transcript channel must be private and hidden from @everyone.");
+      }
+      if (!botPermissions ||
+          !botPermissions.has(PermissionFlagsBits.ViewChannel) ||
+          !botPermissions.has(PermissionFlagsBits.SendMessages) ||
+          !botPermissions.has(PermissionFlagsBits.AttachFiles)) {
+        throw new UserInputError("The bot needs View Channel, Send Messages, and Attach Files in the transcript channel.");
+      }
+    }
 
+    statements.saveTranscript.run(ticket.id, guild.id, content, Date.now());
+
+    if (target) {
       const buffer = Buffer.from(content, "utf8");
       const chunkSize = 7 * 1024 * 1024;
       const files = [];
@@ -1334,6 +1348,19 @@ async function execute(context, name, data = {}) {
       }
       if (data.transcriptChannel && (!data.transcriptChannel.isTextBased() || data.transcriptChannel.guildId !== guild.id)) {
         throw new UserInputError("Choose a text channel from this server for transcripts.");
+      }
+      if (data.transcriptChannel) {
+        const everyonePermissions = data.transcriptChannel.permissionsFor(guild.roles.everyone);
+        const botPermissions = guild.members.me ? data.transcriptChannel.permissionsFor(guild.members.me) : null;
+        if (!everyonePermissions || everyonePermissions.has(PermissionFlagsBits.ViewChannel)) {
+          throw new UserInputError("The transcript channel must be private and hidden from @everyone.");
+        }
+        if (!botPermissions ||
+            !botPermissions.has(PermissionFlagsBits.ViewChannel) ||
+            !botPermissions.has(PermissionFlagsBits.SendMessages) ||
+            !botPermissions.has(PermissionFlagsBits.AttachFiles)) {
+          throw new UserInputError("The bot needs View Channel, Send Messages, and Attach Files in the transcript channel.");
+        }
       }
       if (data.panelChannel && (!data.panelChannel.isTextBased() || data.panelChannel.guildId !== guild.id)) {
         throw new UserInputError("Ticket panel destination must be a text channel in this server.");
