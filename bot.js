@@ -310,36 +310,36 @@ const { parseDuration, formatDate } = utils;
 
 const permissions = (() => {
   function assertCanModerateMember({ actor, target, bot, guild }) {
-    if (!actor || !target || !bot) throw new Error("Could not verify member role hierarchy.");
-    if (actor.id === target.id) throw new Error("You cannot use moderation commands on yourself.");
-    if (guild?.ownerId === target.id) throw new Error("The server owner cannot be moderated.");
-    if (bot.id === target.id) throw new Error("The bot cannot moderate itself.");
+    if (!actor || !target || !bot) throw new UserInputError("Could not verify member role hierarchy.");
+    if (actor.id === target.id) throw new UserInputError("You cannot use moderation commands on yourself.");
+    if (guild?.ownerId === target.id) throw new UserInputError("The server owner cannot be moderated.");
+    if (bot.id === target.id) throw new UserInputError("The bot cannot moderate itself.");
     if (target.roles.highest.position >= bot.roles.highest.position) {
-      throw new Error("I cannot moderate a member with a role equal to or higher than my highest role.");
+      throw new UserInputError("I cannot moderate a member with a role equal to or higher than my highest role.");
     }
     if (guild?.ownerId !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
-      throw new Error("You cannot moderate a member with a role equal to or higher than your highest role.");
+      throw new UserInputError("You cannot moderate a member with a role equal to or higher than your highest role.");
     }
   }
 
   function assertCanManageRole({ actor, target, bot, role, everyoneRoleId, guild }) {
-    if (!actor || !target || !bot || !role) throw new Error("Could not verify role hierarchy.");
-    if (role.id === everyoneRoleId) throw new Error("The @everyone role cannot be managed with this command.");
-    if (role.managed) throw new Error("Managed integration roles cannot be assigned manually.");
+    if (!actor || !target || !bot || !role) throw new UserInputError("Could not verify role hierarchy.");
+    if (role.id === everyoneRoleId) throw new UserInputError("The @everyone role cannot be managed with this command.");
+    if (role.managed) throw new UserInputError("Managed integration roles cannot be assigned manually.");
     if (role.position >= bot.roles.highest.position) {
-      throw new Error("I cannot manage a role equal to or higher than my highest role.");
+      throw new UserInputError("I cannot manage a role equal to or higher than my highest role.");
     }
     if (guild?.ownerId !== actor.id && role.position >= actor.roles.highest.position) {
-      throw new Error("You cannot manage a role equal to or higher than your highest role.");
+      throw new UserInputError("You cannot manage a role equal to or higher than your highest role.");
     }
     if (guild?.ownerId === target.id && guild?.ownerId !== actor.id) {
-      throw new Error("You cannot change roles for the server owner.");
+      throw new UserInputError("You cannot change roles for the server owner.");
     }
     if (guild?.ownerId !== actor.id && target.id !== actor.id && target.roles.highest.position >= actor.roles.highest.position) {
-      throw new Error("You cannot change roles for a target member with a role equal to or higher than your highest role.");
+      throw new UserInputError("You cannot change roles for a target member with a role equal to or higher than your highest role.");
     }
     if (target.roles.highest.position >= bot.roles.highest.position) {
-      throw new Error("I cannot change roles for a member with a role equal to or higher than my highest role.");
+      throw new UserInputError("I cannot change roles for a member with a role equal to or higher than my highest role.");
     }
   }
   return { assertCanModerateMember, assertCanManageRole };
@@ -361,7 +361,7 @@ const ticketSupport = (() => {
       messages.push(...page.values());
       if (page.size < 100) break;
       if (messages.length >= 10000) {
-        throw new Error("This ticket has more than 10,000 messages. The transcript was not marked as complete.");
+        throw new UserInputError("This ticket has more than 10,000 messages. The transcript was not marked as complete.");
       }
 
       before = page.last().id;
@@ -392,7 +392,7 @@ const ticketSupport = (() => {
     if (transcriptChannelId) {
       const target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
       if (!target?.isTextBased()) {
-        throw new Error("The configured transcript channel is unavailable.");
+        throw new UserInputError("The configured transcript channel is unavailable.");
       }
 
       const buffer = Buffer.from(content, "utf8");
@@ -426,7 +426,7 @@ const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
 const DEFAULT_REASON = "No reason provided.";
 
 if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
-  throw new Error("Paste your Discord bot token into TOKEN in the BOT CONFIGURATION section.");
+  throw new UserInputError("Paste your Discord bot token into TOKEN in the BOT CONFIGURATION section.");
 }
 
 const client = new Client({
@@ -564,25 +564,28 @@ function hasPermission(member, permission) {
 
 function requirePermission(member, permission, label) {
   if (!hasPermission(member, permission)) {
-    throw new Error(`You need ${label} permission to do that.`);
+    throw new UserInputError(`You need ${label} permission to do that.`);
   }
 }
+
+class UserInputError extends Error {}
 
 function commandErrorMessage(error) {
   const code = Number(error?.code);
 
+  if (error instanceof UserInputError) return error.message;
   if (code === 50013) return "I don't have permission to do that.";
   if (code === 50001) return "I can't access that channel or resource.";
+  if (code === 50007) return "I couldn't send that DM. The member may have DMs disabled.";
   if (code === 10007) return "That member is no longer in the server.";
   if (code === 10008) return "That message could not be found.";
   if (code === 10011) return "That role could not be found.";
   if (code === 10003) return "That channel could not be found.";
+  if (code === 10013) return "That user ID is invalid or unavailable.";
+  if (code === 10062) return "That interaction expired. Run the command again.";
+  if (code === 40060) return "That interaction has already been handled.";
   if (typeof error?.code === "string" && error.code.startsWith("SQLITE_")) {
     return "I couldn't save that change. Please try again.";
-  }
-
-  if (error instanceof Error && !error.rawError && !error.requestBody && !error.name?.includes("DiscordAPIError")) {
-    return error.message;
   }
 
   return "That didn’t work. Give it another try in a moment.";
@@ -642,11 +645,27 @@ function ticketPanelPayload() {
   };
 }
 
+const ticketCreationLocks = new Set();
+
 async function createTicket(context, category = "support") {
+  const key = context.guild.id + ":" + context.user.id;
+  if (ticketCreationLocks.has(key)) {
+    throw new UserInputError("You're already opening a ticket. Give it a moment.");
+  }
+
+  ticketCreationLocks.add(key);
+  try {
+    return await createTicketInternal(context, category);
+  } finally {
+    ticketCreationLocks.delete(key);
+  }
+}
+
+async function createTicketInternal(context, category = "support") {
   const { guild, user, channel } = context;
-  if (!["support", "complaint", "partnership"].includes(category)) throw new Error("Choose support, complaint, or partnership.");
+  if (!["support", "complaint", "partnership"].includes(category)) throw new UserInputError("Choose support, complaint, or partnership.");
   const existing = statements.getOpenTicketByUser.get(guild.id, user.id);
-  if (existing) throw new Error(`You already have an open ticket: <#${existing.channel_id}>.`);
+  if (existing) throw new UserInputError(`You already have an open ticket: <#${existing.channel_id}>.`);
 
   const number = statements.nextTicket.get().value;
   const staffOverwrites = guild.roles.cache
@@ -695,7 +714,7 @@ async function createTicket(context, category = "support") {
   } catch (error) {
     console.error("Could not save the new ticket:", error);
     await ticketChannel.delete("Ticket database save failed").catch(() => {});
-    throw new Error("I couldn't save the ticket. Please try again.");
+    throw new UserInputError("I couldn't save the ticket. Please try again.");
   }
   try {
     await ticketChannel.send({
@@ -708,7 +727,7 @@ async function createTicket(context, category = "support") {
     console.error("Could not finish setting up the ticket:", error);
     statements.updateTicketStatus.run("deleted", Date.now(), ticketChannel.id);
     await ticketChannel.delete("Ticket setup failed; cleaning up").catch(() => {});
-    throw new Error("The ticket was created, but I couldn't finish setting it up. Please contact the staff team.");
+    throw new UserInputError("The ticket was created, but I couldn't finish setting it up. Please contact the staff team.");
   }
   logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${number}`);
   await reply(context, `Your ticket has been created: <#${ticketChannel.id}>.`);
@@ -716,9 +735,9 @@ async function createTicket(context, category = "support") {
 
 async function closeTicket(context) {
   const ticket = getTicket(context.channel.id);
-  if (!ticket || ticket.status !== "open") throw new Error("This channel is not an open ticket.");
+  if (!ticket || ticket.status !== "open") throw new UserInputError("This channel is not an open ticket.");
   if (ticket.user_id !== context.user.id && !hasPermission(context.member, PermissionFlagsBits.ManageChannels)) {
-    throw new Error("Only the ticket owner or staff can close this ticket.");
+    throw new UserInputError("Only the ticket owner or staff can close this ticket.");
   }
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("ticket:close:confirm:" + context.channel.id + ":" + context.user.id).setLabel("Confirm close").setStyle(ButtonStyle.Danger),
@@ -729,9 +748,23 @@ async function closeTicket(context) {
 
 async function handleTicketInteraction(interaction) {
   if (!interaction.isButton() || !interaction.customId.startsWith("ticket:")) return false;
-  if (!interaction.guild) return false;
+  if (!interaction.guild) {
+    await interaction.reply({ content: "Ticket buttons only work inside a server.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
 
   const parts = interaction.customId.split(":");
+  const validCreate = parts[1] === "create" && ["support", "complaint", "partnership"].includes(parts[2]);
+  const validAction = parts[1] === "action" && ["close", "claim", "reopen", "delete"].includes(parts[2]);
+  const validClose = parts[1] === "close" &&
+    ["confirm", "cancel"].includes(parts[2]) &&
+    /^\\d{17,20}$/.test(parts[3] || "") &&
+    /^\\d{17,20}$/.test(parts[4] || "");
+
+  if (!validCreate && !validAction && !validClose) {
+    await interaction.reply({ content: "This ticket button is no longer available.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
 
   if (parts[1] === "create" && ["support", "complaint", "partnership"].includes(parts[2])) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -828,9 +861,9 @@ async function handleTicketInteraction(interaction) {
 }
 async function reopenTicket(context) {
   const ticket = getTicket(context.channel.id);
-  if (!ticket || ticket.status !== "closed") throw new Error("This channel is not a closed ticket.");
+  if (!ticket || ticket.status !== "closed") throw new UserInputError("This channel is not a closed ticket.");
   if (ticket.user_id !== context.user.id && !hasPermission(context.member, PermissionFlagsBits.ManageChannels)) {
-    throw new Error("Only the ticket owner or staff can reopen this ticket.");
+    throw new UserInputError("Only the ticket owner or staff can reopen this ticket.");
   }
   await context.channel.permissionOverwrites.edit(ticket.user_id, {
     ViewChannel: true,
@@ -849,14 +882,14 @@ async function reopenTicket(context) {
 
 async function deleteTicket(context) {
   const ticket = getTicket(context.channel.id);
-  if (!ticket) throw new Error("This channel is not a ticket.");
+  if (!ticket) throw new UserInputError("This channel is not a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
   try {
     await ticketSupport.createTranscript(context.channel, ticket, context.guild, logAction);
   } catch (error) {
     console.error("Could not save the ticket transcript before deletion:", error);
     logAction(context.guild.id, context.user.id, "ticket_transcript_failed", ticket.user_id, error.message);
-    throw new Error("I couldn't save the transcript, so the ticket was left in place.");
+    throw new UserInputError("I couldn't save the transcript, so the ticket was left in place.");
   }
   if (context.isInteraction) {
     await reply(context, `Ticket #${ticket.number} deleted.`);
@@ -868,7 +901,7 @@ async function deleteTicket(context) {
 
 async function addTicketMember(context, target, remove = false) {
   const ticket = getTicket(context.channel.id);
-  if (!ticket) throw new Error("This command can only be used inside a ticket.");
+  if (!ticket) throw new UserInputError("This command can only be used inside a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
   await context.channel.permissionOverwrites.edit(target.id, remove
     ? { ViewChannel: false }
@@ -879,7 +912,7 @@ async function addTicketMember(context, target, remove = false) {
 
 async function claimTicket(context) {
   const ticket = getTicket(context.channel.id);
-  if (!ticket) throw new Error("This channel is not a ticket.");
+  if (!ticket || ticket.status !== "open") throw new UserInputError("This ticket isn't open anymore.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
   statements.claimTicket.run(context.user.id, context.channel.id);
   logAction(context.guild.id, context.user.id, "ticket_claim", ticket.user_id, `Ticket #${ticket.number}`);
@@ -890,13 +923,13 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
   requirePermission(context.member, PermissionFlagsBits.ManageGuild, "Manage Server");
   const duration = parseDuration(durationText);
   if (typeof prize !== "string" || prize.trim().length < 1 || prize.length > 200) {
-    throw new Error("Giveaway prize must contain between 1 and 200 characters.");
+    throw new UserInputError("Giveaway prize must contain between 1 and 200 characters.");
   }
   if (!duration || duration < 60_000 || duration > 30 * 24 * 60 * 60 * 1000) {
-    throw new Error("Giveaway duration must be between 1 minute and 30 days (examples: 10m, 2h, 1d).");
+    throw new UserInputError("Giveaway duration must be between 1 minute and 30 days (examples: 10m, 2h, 1d).");
   }
   if (!Number.isInteger(winnersCount) || winnersCount < 1 || winnersCount > 20) {
-    throw new Error("Winner count must be between 1 and 20.");
+    throw new UserInputError("Winner count must be between 1 and 20.");
   }
 
   const destination = targetChannel ?? context.channel;
@@ -923,12 +956,12 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
   try {
     giveawayMessage = await destination.send({ embeds: [embed], components: [row] });
     const linked = statements.setGiveawayMessage.run(giveawayMessage.id, id);
-    if (!linked.changes) throw new Error("Could not link the giveaway message to its database record.");
+    if (!linked.changes) throw new UserInputError("Could not link the giveaway message to its database record.");
   } catch (error) {
     console.error("Could not finish creating the giveaway:", error);
     if (giveawayMessage) await giveawayMessage.delete("Giveaway setup failed").catch(() => {});
     statements.deleteGiveaway.run(id);
-    throw new Error("I couldn't post the giveaway. Check the bot's channel permissions and try again.");
+    throw new UserInputError("I couldn't post the giveaway. Check the bot's channel permissions and try again.");
   }
   logAction(context.guild.id, context.user.id, "giveaway_create", null, `Giveaway #${id}: ${prize}`);
   scheduleGiveawayEnd(id, context.guild.id, endsAt);
@@ -1011,7 +1044,7 @@ function scheduleGiveawayEnd(id, guildId, endsAt) {
 async function moderation(context, name, data) {
   const { guild, user, member } = context;
   const reason = data.reason?.trim() || DEFAULT_REASON;
-  if (reason.length > 500) throw new Error("Moderation reason cannot exceed 500 characters.");
+  if (reason.length > 500) throw new UserInputError("Moderation reason cannot exceed 500 characters.");
 
   if (name === "ban") {
     requirePermission(member, PermissionFlagsBits.BanMembers, "Ban Members");
@@ -1042,7 +1075,7 @@ async function moderation(context, name, data) {
     requirePermission(member, PermissionFlagsBits.ModerateMembers, "Moderate Members");
     const duration = parseDuration(data.duration);
     if (!duration || duration < 1_000 || duration > 28 * 24 * 60 * 60 * 1000) {
-      throw new Error("Timeout duration must be between 1 second and 28 days (examples: 10m, 2h, 1d).");
+      throw new UserInputError("Timeout duration must be between 1 second and 28 days (examples: 10m, 2h, 1d).");
     }
     const targetMember = await getMember(guild, data.target);
     assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
@@ -1063,7 +1096,7 @@ async function moderation(context, name, data) {
   if (name === "warn") {
     requirePermission(member, PermissionFlagsBits.ModerateMembers, "Moderate Members");
     if (typeof data.reason !== "string" || !data.reason.trim() || data.reason.length > 1000) {
-      throw new Error("Warning reason must contain between 1 and 1000 characters.");
+      throw new UserInputError("Warning reason must contain between 1 and 1000 characters.");
     }
     const targetMember = await getMember(guild, data.target);
     assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
@@ -1094,7 +1127,7 @@ async function moderation(context, name, data) {
     const targetMember = await getMember(guild, data.target);
     assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     const result = statements.deleteWarning.run(data.warningId, guild.id, data.target.id);
-    if (!result.changes) throw new Error("Warning not found for this member.");
+    if (!result.changes) throw new UserInputError("Warning not found for this member.");
     logAction(guild.id, user.id, "clear_warning", data.target.id, `Warning #${data.warningId}`);
     await reply(context, `Deleted warning #${data.warningId} for <@${data.target.id}>.`);
   }
@@ -1102,7 +1135,7 @@ async function moderation(context, name, data) {
 
 async function execute(context, name, data = {}) {
   const { guild, member, user, channel } = context;
-  if (!guild) throw new Error("This command can only be used inside a server.");
+  if (!guild) throw new UserInputError("This command can only be used inside a server.");
 
   if (["ban", "unban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarn"].includes(name)) {
     return moderation(context, name, data);
@@ -1111,7 +1144,7 @@ async function execute(context, name, data = {}) {
   switch (name) {
     case "lock": {
       requirePermission(member, PermissionFlagsBits.ManageChannels, "Manage Channels");
-      if (!channel?.isTextBased() || !channel.permissionOverwrites) throw new Error("This command requires a text channel.");
+      if (!channel?.isTextBased() || !channel.permissionOverwrites) throw new UserInputError("This command requires a text channel.");
       await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false, SendMessagesInThreads: false, CreatePublicThreads: false, CreatePrivateThreads: false });
       logAction(guild.id, user.id, "channel_lock", channel.id, channel.name);
       await reply(context, "🔒 Locked <#" + channel.id + ">.", false);
@@ -1119,7 +1152,7 @@ async function execute(context, name, data = {}) {
     }
     case "unlock": {
       requirePermission(member, PermissionFlagsBits.ManageChannels, "Manage Channels");
-      if (!channel?.isTextBased() || !channel.permissionOverwrites) throw new Error("This command requires a text channel.");
+      if (!channel?.isTextBased() || !channel.permissionOverwrites) throw new UserInputError("This command requires a text channel.");
       await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null, SendMessagesInThreads: null, CreatePublicThreads: null, CreatePrivateThreads: null });
       logAction(guild.id, user.id, "channel_unlock", channel.id, channel.name);
       await reply(context, "🔓 Unlocked <#" + channel.id + ">.", false);
@@ -1128,8 +1161,8 @@ async function execute(context, name, data = {}) {
     case "slowmode": {
       requirePermission(member, PermissionFlagsBits.ManageChannels, "Manage Channels");
       const seconds = Number(data.seconds);
-      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 21600) throw new Error("Slowmode must be between 0 and 21600 seconds.");
-      if (!channel?.setRateLimitPerUser) throw new Error("This channel does not support slowmode.");
+      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 21600) throw new UserInputError("Slowmode must be between 0 and 21600 seconds.");
+      if (!channel?.setRateLimitPerUser) throw new UserInputError("This channel does not support slowmode.");
       await channel.setRateLimitPerUser(seconds, "Slowmode changed by " + user.tag);
       logAction(guild.id, user.id, "slowmode", channel.id, seconds + " seconds");
       await reply(context, seconds ? "🐢 Slowmode set to " + seconds + " seconds." : "🐢 Slowmode disabled.", false);
@@ -1137,7 +1170,7 @@ async function execute(context, name, data = {}) {
     }
     case "announce": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new Error("Announcement must contain between 1 and 2000 characters.");
+      if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new UserInputError("Announcement must contain between 1 and 2000 characters.");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Announcement").setDescription(data.message.trim()).setFooter({ text: "Posted by " + user.tag }).setTimestamp();
       await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
       logAction(guild.id, user.id, "announce", channel.id, data.message.slice(0, 500));
@@ -1146,10 +1179,10 @@ async function execute(context, name, data = {}) {
     }
     case "notify": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-      if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new Error("Notification must contain between 1 and 2000 characters.");
+      if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new UserInputError("Notification must contain between 1 and 2000 characters.");
       const role = data.role ?? null;
       if (role && !role.mentionable && (!hasPermission(member, PermissionFlagsBits.MentionEveryone) || !guild.members.me.permissions.has(PermissionFlagsBits.MentionEveryone))) {
-        throw new Error("The role is not mentionable. Both you and the bot need Mention Everyone permission to notify it.");
+        throw new UserInputError("The role is not mentionable. Both you and the bot need Mention Everyone permission to notify it.");
       }
       const prefix = role ? "<@&" + role.id + "> " : "";
       await channel.send({ content: prefix + data.message.trim(), allowedMentions: { roles: role ? [role.id] : [], parse: [] } });
@@ -1161,7 +1194,7 @@ async function execute(context, name, data = {}) {
     case "purge": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
       const amount = Number(data.amount);
-      if (!Number.isInteger(amount) || amount < 1 || amount > 100) throw new Error("Amount must be between 1 and 100.");
+      if (!Number.isInteger(amount) || amount < 1 || amount > 100) throw new UserInputError("Amount must be between 1 and 100.");
       const deleted = await channel.bulkDelete(amount, true);
       await reply(context, `Deleted ${deleted.size} messages.`);
       logAction(guild.id, user.id, "clear", null, `Deleted ${deleted.size} messages`);
@@ -1177,16 +1210,16 @@ async function execute(context, name, data = {}) {
         ["ticket_category_partnership_id", data.partnershipCategory]
       ];
       if (!entries.some(entry => entry[1]) && !data.panelChannel) {
-        throw new Error("Choose a transcript channel, ticket category, or panel channel.");
+        throw new UserInputError("Choose a transcript channel, ticket category, or panel channel.");
       }
       if (data.transcriptChannel && (!data.transcriptChannel.isTextBased() || data.transcriptChannel.guildId !== guild.id)) {
-        throw new Error("Choose a text channel from this server for transcripts.");
+        throw new UserInputError("Choose a text channel from this server for transcripts.");
       }
       if (data.panelChannel && (!data.panelChannel.isTextBased() || data.panelChannel.guildId !== guild.id)) {
-        throw new Error("Ticket panel destination must be a text channel in this server.");
+        throw new UserInputError("Ticket panel destination must be a text channel in this server.");
       }
       for (const [key, value] of entries.slice(1)) {
-        if (value && value.type !== ChannelType.GuildCategory) throw new Error("Ticket parents must be category channels.");
+        if (value && value.type !== ChannelType.GuildCategory) throw new UserInputError("Ticket parents must be category channels.");
       }
       for (const [key, value] of entries) if (value) ticketSupport.setSetting(guild.id, key, value.id);
       if (data.panelChannel) {
@@ -1218,9 +1251,9 @@ async function execute(context, name, data = {}) {
     case "reroll": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       const giveaway = statements.getGiveaway.get(data.giveawayId, guild.id);
-      if (!giveaway) throw new Error("Giveaway not found.");
-      if (name === "endgiveaway" && giveaway.status !== "active") throw new Error("This giveaway has already ended.");
-      if (name === "reroll" && giveaway.status !== "ended") throw new Error("You can only reroll a giveaway that has ended.");
+      if (!giveaway) throw new UserInputError("Giveaway not found.");
+      if (name === "endgiveaway" && giveaway.status !== "active") throw new UserInputError("This giveaway has already ended.");
+      if (name === "reroll" && giveaway.status !== "ended") throw new UserInputError("You can only reroll a giveaway that has ended.");
       const winners = await finishGiveaway(giveaway, name === "reroll");
       if (name === "endgiveaway") {
         logAction(guild.id, user.id, "giveaway_end", null, `Giveaway #${giveaway.id}`);
@@ -1232,7 +1265,7 @@ async function execute(context, name, data = {}) {
     }
     case "say": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
-      if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new Error("Message must contain between 1 and 2000 characters.");
+      if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new UserInputError("Message must contain between 1 and 2000 characters.");
       await channel.send({ content: data.message, allowedMentions: { parse: ["everyone", "users", "roles"] } });
       logAction(guild.id, user.id, "say", null, data.message.slice(0, 500));
       if (context.isInteraction) await reply(context, "Message sent.");
@@ -1240,7 +1273,7 @@ async function execute(context, name, data = {}) {
     }
     case "dm": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
-      if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new Error("Message must contain between 1 and 2000 characters.");
+      if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new UserInputError("Message must contain between 1 and 2000 characters.");
       await data.target.send({ content: data.message, allowedMentions: { parse: ["users", "roles", "everyone"] } });
       logAction(guild.id, user.id, "dm", data.target.id, data.message.slice(0, 500));
       await reply(context, `Direct message sent to <@${data.target.id}>.`);
@@ -1318,14 +1351,14 @@ async function execute(context, name, data = {}) {
         await reply(context, "Anti-spam is now " + (data.enabled ? "enabled." : "disabled."));
       } else if (sub === "addword") {
         const word = String(data.word || "").trim().toLocaleLowerCase();
-        if (word.length < 2 || !/[\p{L}\p{N}]/u.test(word)) throw new Error("Enter a valid word or phrase (2–80 characters).");
+        if (word.length < 2 || !/[\p{L}\p{N}]/u.test(word)) throw new UserInputError("Enter a valid word or phrase (2–80 characters).");
         const result = statements.addBlockedWord.run(guild.id, word, user.id, Date.now());
         await reply(context, result.changes ? "Added the blocked word/phrase." : "That word/phrase is already blocked.");
         logAction(guild.id, user.id, "security_word_add", null, "Added blocked phrase: " + word);
       } else if (sub === "removeword") {
         const word = String(data.word || "").trim().toLocaleLowerCase();
         const result = statements.removeBlockedWord.run(guild.id, word);
-        if (!result.changes) throw new Error("That word/phrase is not in the blocked list.");
+        if (!result.changes) throw new UserInputError("That word/phrase is not in the blocked list.");
         await reply(context, "Removed the blocked word/phrase.");
         logAction(guild.id, user.id, "security_word_remove", null, "Removed blocked phrase: " + word);
       } else {
@@ -1337,7 +1370,7 @@ async function execute(context, name, data = {}) {
     case "logsettings": {
       requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
       const allowed = ["messages","members","channels","roles","moderation","tickets","giveaways","security","server"];
-      if (!allowed.includes(data.category)) throw new Error("Unknown log category.");
+      if (!allowed.includes(data.category)) throw new UserInputError("Unknown log category.");
       statements.setGuildSetting.run(guild.id, "log_enabled_" + data.category, String(Boolean(data.enabled)));
       await reply(context, "The **" + data.category + "** log category is now " + (data.enabled ? "enabled." : "disabled."));
       logAction(guild.id, user.id, "log_config", null, data.category + " logs " + (data.enabled ? "enabled" : "disabled"));
@@ -1347,7 +1380,7 @@ async function execute(context, name, data = {}) {
       if (data.channel) {
         requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
         if (data.channel.guildId !== guild.id || !data.channel.isTextBased()) {
-          throw new Error("Choose a text channel from this server.");
+          throw new UserInputError("Choose a text channel from this server.");
         }
         statements.setGuildSetting.run(guild.id, "log_channel_id", data.channel.id);
         logAction(guild.id, user.id, "log_channel_config", data.channel.id, "Automatic logs channel configured");
@@ -1368,7 +1401,7 @@ async function execute(context, name, data = {}) {
       break;
     }
     default:
-      throw new Error("Unknown command. Use /help to see the available commands.");
+      throw new UserInputError("Unknown command. Use /help to see the available commands.");
   }
 }
 
@@ -1527,6 +1560,11 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
   if (newMessage.partial) newMessage = await newMessage.fetch().catch(() => newMessage);
   if (!newMessage.guild || newMessage.author?.bot) return;
   if (oldMessage.content === newMessage.content) return;
+  try {
+    if (!await handleSecurity(newMessage)) return;
+  } catch (error) {
+    console.error("Security check failed for an edited message:", error);
+  }
   logAction(newMessage.guild.id, newMessage.author?.id || client.user.id, "message_edit",
     newMessage.author?.id, "Channel #" + newMessage.channel?.name +
     "\nBefore: " + (oldMessage.content || "[Empty]").slice(0, 700) +
@@ -1535,13 +1573,13 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
 
 client.on("guildMemberAdd", member => {
   if (!member.guild) return;
-  logAction(member.guild.id, member.id, "member_join", member.id,
+  logAction(member.guild.id, "system", "member_join", member.id,
     member.user.tag + " joined the server");
 });
 
 client.on("guildMemberRemove", member => {
   if (!member.guild) return;
-  logAction(member.guild.id, member.id, "member_leave", member.id,
+  logAction(member.guild.id, "system", "member_leave", member.id,
     (member.user?.tag || member.id) + " left the server");
 });
 
