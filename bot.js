@@ -129,6 +129,14 @@ const database = (() => {
       created_at INTEGER NOT NULL,
       UNIQUE(guild_id, word)
     );
+
+    CREATE TABLE IF NOT EXISTS security_strikes (
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      strikes INTEGER NOT NULL,
+      last_strike_at INTEGER NOT NULL,
+      PRIMARY KEY(guild_id, user_id)
+    );
   `);
 
   const migrateTicketNumbers = db.transaction(() => {
@@ -215,6 +223,15 @@ const database = (() => {
     addBlockedWord: db.prepare("INSERT OR IGNORE INTO blocked_words(guild_id, word, created_by, created_at) VALUES(?, ?, ?, ?)"),
     removeBlockedWord: db.prepare("DELETE FROM blocked_words WHERE guild_id = ? AND word = ?"),
     getBlockedWords: db.prepare("SELECT word FROM blocked_words WHERE guild_id = ? ORDER BY word COLLATE NOCASE"),
+    getSecurityStrike: db.prepare("SELECT strikes, last_strike_at FROM security_strikes WHERE guild_id = ? AND user_id = ?"),
+    setSecurityStrike: db.prepare(`
+      INSERT INTO security_strikes(guild_id, user_id, strikes, last_strike_at)
+      VALUES(?, ?, ?, ?)
+      ON CONFLICT(guild_id, user_id) DO UPDATE SET
+        strikes = excluded.strikes,
+        last_strike_at = excluded.last_strike_at
+    `),
+    deleteExpiredSecurityStrikes: db.prepare("DELETE FROM security_strikes WHERE last_strike_at < ?"),
     saveTranscript: db.prepare("INSERT INTO ticket_transcripts(ticket_id, guild_id, content, created_at) VALUES(?, ?, ?, ?)"),
   };
   return { db, statements };
@@ -1617,6 +1634,7 @@ client.once("ready", async () => {
   }
 
   statements.recoverGiveawayEnds.run();
+  statements.deleteExpiredSecurityStrikes.run(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   try {
     await client.application.commands.set(slashCommands);
@@ -1708,6 +1726,14 @@ function messageAuditDetails(channel, content, label) {
 const recentUserMessages = new Map();
 const SPAM_WINDOW_MS = 5000;
 const SPAM_LIMIT = 5;
+const SPAM_STRIKE_WINDOW_MS = 10 * 60 * 1000;
+
+function spamTimeoutForStrike(strikes) {
+  if (strikes === 2) return 60_000;
+  if (strikes === 3) return 5 * 60_000;
+  if (strikes >= 4) return 15 * 60_000;
+  return 0;
+}
 
 async function handleSecurity(message, { countForSpam = true } = {}) {
   if (!message.guild || message.author?.bot || message.webhookId) return true;
@@ -1741,6 +1767,8 @@ async function handleSecurity(message, { countForSpam = true } = {}) {
   }
 
   if (!countForSpam) return true;
+  if (member.permissions.has(PermissionFlagsBits.ManageMessages) ||
+      member.permissions.has(PermissionFlagsBits.ModerateMembers)) return true;
   if (statements.getGuildSetting.get(message.guild.id, "antispam_enabled")?.value === "false") return true;
   const now = Date.now();
   const key = message.guild.id + ":" + message.author.id;
@@ -1757,9 +1785,32 @@ async function handleSecurity(message, { countForSpam = true } = {}) {
     }
 
     recentUserMessages.set(key, []);
+    const previousStrike = statements.getSecurityStrike.get(message.guild.id, message.author.id);
+    const strikes = previousStrike && now - previousStrike.last_strike_at <= SPAM_STRIKE_WINDOW_MS
+      ? previousStrike.strikes + 1
+      : 1;
+    statements.setSecurityStrike.run(message.guild.id, message.author.id, strikes, now);
+    const timeoutDuration = spamTimeoutForStrike(strikes);
+    let timeoutApplied = false;
+    if (timeoutDuration && member.moderatable) {
+      try {
+        await member.timeout(timeoutDuration, "Repeated spam detected (strike " + strikes + ")");
+        timeoutApplied = true;
+      } catch (error) {
+        console.error("Could not apply an anti-spam timeout:", error);
+      }
+    }
+    const timeoutLabel = timeoutDuration === 60_000
+      ? "1 minute"
+      : timeoutDuration === 5 * 60_000
+        ? "5 minutes"
+        : timeoutDuration === 15 * 60_000
+          ? "15 minutes"
+          : "";
     logAction(message.guild.id, client.user.id, "security_spam_detected", message.author.id,
-      "Rapid message burst detected in #" + message.channel.name + " (" + timestamps.length + " messages / 5 seconds)" +
-      (deleted ? "" : " (message could not be deleted; check the bot's Manage Messages permission)"));
+      "Rapid message burst detected in #" + message.channel.name + " (" + timestamps.length + " messages / 5 seconds). Strike #" + strikes +
+      (timeoutDuration ? (timeoutApplied ? "; timeout applied for " + timeoutLabel : "; timeout not applied because the bot cannot moderate this member") : "; message deleted") +
+      (deleted ? "" : "; message could not be deleted, check Manage Messages permission"));
     return false;
   }
 
