@@ -132,6 +132,7 @@ const database = (() => {
   `);
 
   const migrateTicketNumbers = db.transaction(() => {
+    db.prepare("UPDATE logs SET details = 'Direct message sent; message content was not stored.' WHERE action = 'dm'").run();
     const columns = db.pragma("table_info(tickets)");
     if (!columns.some(column => column.name === "guild_number")) {
       db.exec("ALTER TABLE tickets ADD COLUMN guild_number INTEGER");
