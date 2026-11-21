@@ -360,7 +360,7 @@ const ticketSupport = (() => {
 
       messages.push(...page.values());
       if (page.size < 100) break;
-      if (messages.length >= 10000) {
+      if (messages.length > 10000) {
         throw new UserInputError("This ticket has more than 10,000 messages. The transcript was not marked as complete.");
       }
 
