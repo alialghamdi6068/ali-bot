@@ -137,6 +137,9 @@ const database = (() => {
       last_strike_at INTEGER NOT NULL,
       PRIMARY KEY(guild_id, user_id)
     );
+
+    CREATE INDEX IF NOT EXISTS idx_security_strikes_last_strike_at
+      ON security_strikes(last_strike_at);
   `);
 
   const migrateTicketNumbers = db.transaction(() => {
