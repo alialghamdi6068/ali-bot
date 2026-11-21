@@ -43,6 +43,7 @@ const database = (() => {
     CREATE TABLE IF NOT EXISTS tickets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       number INTEGER NOT NULL UNIQUE,
+      guild_number INTEGER NOT NULL,
       guild_id TEXT NOT NULL,
       channel_id TEXT NOT NULL UNIQUE,
       user_id TEXT NOT NULL,
@@ -130,15 +131,48 @@ const database = (() => {
     );
   `);
 
+  const migrateTicketNumbers = db.transaction(() => {
+    const columns = db.pragma("table_info(tickets)");
+    if (!columns.some(column => column.name === "guild_number")) {
+      db.exec("ALTER TABLE tickets ADD COLUMN guild_number INTEGER");
+    }
+    db.exec(`
+      UPDATE tickets
+      SET guild_number = (
+        SELECT COUNT(*)
+        FROM tickets AS previous
+        WHERE previous.guild_id = tickets.guild_id
+          AND previous.id <= tickets.id
+      )
+      WHERE guild_number IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_guild_number
+        ON tickets(guild_id, guild_number);
+    `);
+    const maxTicketNumber = db.prepare("SELECT COALESCE(MAX(number), 0) AS value FROM tickets").get().value;
+    const saveCounter = db.prepare(`
+      INSERT INTO counters(name, value) VALUES(?, ?)
+      ON CONFLICT(name) DO UPDATE SET value = MAX(value, excluded.value)
+    `);
+    saveCounter.run("ticket", maxTicketNumber);
+    const guildCounters = db.prepare("SELECT guild_id, MAX(guild_number) AS value FROM tickets GROUP BY guild_id").all();
+    for (const counter of guildCounters) saveCounter.run("ticket:" + counter.guild_id, counter.value);
+  });
+  migrateTicketNumbers();
+
   const statements = {
     nextTicket: db.prepare(`
       INSERT INTO counters(name, value) VALUES('ticket', 1)
       ON CONFLICT(name) DO UPDATE SET value = value + 1
       RETURNING value
     `),
+    nextGuildTicket: db.prepare(`
+      INSERT INTO counters(name, value) VALUES(?, 1)
+      ON CONFLICT(name) DO UPDATE SET value = value + 1
+      RETURNING value
+    `),
     createTicket: db.prepare(`
-      INSERT INTO tickets(number, guild_id, channel_id, user_id, created_at)
-      VALUES(@number, @guildId, @channelId, @userId, @createdAt)
+      INSERT INTO tickets(number, guild_number, guild_id, channel_id, user_id, created_at)
+      VALUES(@number, @guildNumber, @guildId, @channelId, @userId, @createdAt)
     `),
     getTicketByChannel: db.prepare("SELECT * FROM tickets WHERE channel_id = ?"),
     getOpenTicketByUser: db.prepare("SELECT * FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open'"),
@@ -430,7 +464,7 @@ const ticketSupport = (() => {
         message.author.tag + " (" + message.author.id + "):\n" + body;
     });
 
-    const content = "Ticket #" + ticket.number + " | " + guild.name +
+    const content = "Ticket #" + ticket.guild_number + " | " + guild.name +
       "\nOwner: " + ticket.user_id +
       "\nMessages: " + ordered.length +
       "\n\n" + lines.join("\n\n");
@@ -452,15 +486,15 @@ const ticketSupport = (() => {
         const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, buffer.length));
         const suffix = buffer.length > chunkSize ? "-part-" + part : "";
         files.push(new AttachmentBuilder(chunk, {
-          name: "ticket-" + ticket.number + "-transcript" + suffix + ".txt"
+          name: "ticket-" + ticket.guild_number + "-transcript" + suffix + ".txt"
         }));
       }
 
       for (let index = 0; index < files.length; index += 10) {
         await target.send({
           content: index === 0
-            ? "Transcript for ticket #" + ticket.number + " (" + ordered.length + " messages)."
-            : "Transcript continued for ticket #" + ticket.number + ".",
+            ? "Transcript for ticket #" + ticket.guild_number + " (" + ordered.length + " messages)."
+            : "Transcript continued for ticket #" + ticket.guild_number + ".",
           files: files.slice(index, index + 10),
           allowedMentions: { parse: [] }
         });
@@ -468,7 +502,7 @@ const ticketSupport = (() => {
     }
 
     logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id,
-      "Ticket #" + ticket.number + " — " + ordered.length + " messages");
+      "Ticket #" + ticket.guild_number + " — " + ordered.length + " messages");
   }
 
   return { setting, setSetting, createTranscript };
@@ -714,14 +748,15 @@ async function createTicketInternal(context, category = "support") {
   if (existing) throw new UserInputError(`You already have an open ticket: <#${existing.channel_id}>.`);
 
   const number = statements.nextTicket.get().value;
+  const guildNumber = statements.nextGuildTicket.get("ticket:" + guild.id).value;
   const staffOverwrites = guild.roles.cache
     .filter(role => role.id !== guild.roles.everyone.id && role.permissions.has(PermissionFlagsBits.ManageChannels))
     .map(role => ({ id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }));
   const ticketChannel = await guild.channels.create({
-    name: String(number),
+    name: String(guildNumber),
     type: ChannelType.GuildText,
     parent: ticketSupport.setting(guild.id, "ticket_category_" + category + "_id") || undefined,
-    topic: `Ticket #${number} | Owner: ${user.id}`,
+    topic: `Ticket #${guildNumber} | Owner: ${user.id}`,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       ...staffOverwrites,
@@ -746,12 +781,13 @@ async function createTicketInternal(context, category = "support") {
         ]
       }
     ],
-    reason: `Ticket #${number} created by ${user.tag}`
+    reason: `Ticket #${guildNumber} created by ${user.tag}`
   });
 
   try {
     statements.createTicket.run({
       number,
+      guildNumber,
       guildId: guild.id,
       channelId: ticketChannel.id,
       userId: user.id,
@@ -765,7 +801,7 @@ async function createTicketInternal(context, category = "support") {
   try {
     await ticketChannel.send({
       content: `<@!${user.id}>`,
-      embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`Ticket #${number}`).setDescription("Describe your issue here. A staff member will assist you.")],
+      embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`Ticket #${guildNumber}`).setDescription("Describe your issue here. A staff member will assist you.")],
       components: [ticketControlRow()],
       allowedMentions: { users: [user.id] }
     });
@@ -775,8 +811,8 @@ async function createTicketInternal(context, category = "support") {
     await ticketChannel.delete("Ticket setup failed; cleaning up").catch(() => {});
     throw new UserInputError("The ticket was created, but I couldn't finish setting it up. Please contact the staff team.");
   }
-  logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${number}`);
-  await reply(context, `Your ticket has been created: <#${ticketChannel.id}>.`);
+  logAction(guild.id, user.id, "ticket_create", ticketChannel.id, `Ticket #${guildNumber}`);
+  await reply(context, `Your ticket #${guildNumber} has been created: <#${ticketChannel.id}>.`);
 }
 
 async function closeTicket(context) {
@@ -789,7 +825,7 @@ async function closeTicket(context) {
     new ButtonBuilder().setCustomId("ticket:close:confirm:" + context.channel.id + ":" + context.user.id).setLabel("Confirm close").setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId("ticket:close:cancel:" + context.channel.id + ":" + context.user.id).setLabel("Cancel").setStyle(ButtonStyle.Secondary)
   );
-  await reply(context, { content: "Are you sure you want to close ticket #" + ticket.number + "?", components: [row] });
+  await reply(context, { content: "Are you sure you want to close ticket #" + ticket.guild_number + "?", components: [row] });
 }
 
 async function handleTicketInteraction(interaction) {
@@ -892,9 +928,9 @@ async function handleTicketInteraction(interaction) {
 
   await channel.permissionOverwrites.edit(ticket.user_id, { SendMessages: false, AttachFiles: false });
   statements.updateTicketStatus.run("closed", Date.now(), channelId);
-  logAction(interaction.guild.id, interaction.user.id, "ticket_close", ticket.user_id, "Ticket #" + ticket.number);
+  logAction(interaction.guild.id, interaction.user.id, "ticket_close", ticket.user_id, "Ticket #" + ticket.guild_number);
   await interaction.editReply({
-    content: "Ticket #" + ticket.number + " is closed. The transcript has been saved.",
+    content: "Ticket #" + ticket.guild_number + " is closed. The transcript has been saved.",
     components: []
   });
   await channel.send({
@@ -918,12 +954,12 @@ async function reopenTicket(context) {
     AttachFiles: true
   });
   statements.updateTicketStatus.run("open", null, context.channel.id);
-  logAction(context.guild.id, context.user.id, "ticket_reopen", ticket.user_id, `Ticket #${ticket.number}`);
+  logAction(context.guild.id, context.user.id, "ticket_reopen", ticket.user_id, `Ticket #${ticket.guild_number}`);
   await context.channel.send({
     content: "This ticket is open again. Use the buttons below to close it or claim it.",
     components: [ticketControlRow()]
   });
-  await reply(context, `Ticket #${ticket.number} has been reopened.`, false);
+  await reply(context, `Ticket #${ticket.guild_number} has been reopened.`, false);
 }
 
 async function deleteTicket(context) {
@@ -938,11 +974,11 @@ async function deleteTicket(context) {
     throw new UserInputError("I couldn't save the transcript, so the ticket was left in place.");
   }
   if (context.isInteraction) {
-    await reply(context, `Ticket #${ticket.number} deleted.`);
+    await reply(context, `Ticket #${ticket.guild_number} deleted.`);
   }
-  await context.channel.delete(`Ticket #${ticket.number} deleted by ${context.user.tag}`);
+  await context.channel.delete(`Ticket #${ticket.guild_number} deleted by ${context.user.tag}`);
   statements.updateTicketStatus.run("deleted", Date.now(), context.channel.id);
-  logAction(context.guild.id, context.user.id, "ticket_delete", ticket.user_id, `Ticket #${ticket.number}`);
+  logAction(context.guild.id, context.user.id, "ticket_delete", ticket.user_id, `Ticket #${ticket.guild_number}`);
 }
 
 async function addTicketMember(context, target, remove = false) {
@@ -954,7 +990,7 @@ async function addTicketMember(context, target, remove = false) {
   await context.channel.permissionOverwrites.edit(target.id, remove
     ? { ViewChannel: false }
     : { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true });
-  logAction(context.guild.id, context.user.id, remove ? "ticket_remove_member" : "ticket_add_member", target.id, `Ticket #${ticket.number}`);
+  logAction(context.guild.id, context.user.id, remove ? "ticket_remove_member" : "ticket_add_member", target.id, `Ticket #${ticket.guild_number}`);
   await reply(context, remove ? `Removed <@${target.id}> from this ticket.` : `Added <@${target.id}> to this ticket.`, false);
 }
 
@@ -963,8 +999,8 @@ async function claimTicket(context) {
   if (!ticket || ticket.status !== "open") throw new UserInputError("This ticket isn't open anymore.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
   statements.claimTicket.run(context.user.id, context.channel.id);
-  logAction(context.guild.id, context.user.id, "ticket_claim", ticket.user_id, `Ticket #${ticket.number}`);
-  await reply(context, `Ticket #${ticket.number} claimed by <@${context.user.id}>.`, false);
+  logAction(context.guild.id, context.user.id, "ticket_claim", ticket.user_id, `Ticket #${ticket.guild_number}`);
+  await reply(context, `Ticket #${ticket.guild_number} claimed by <@${context.user.id}>.`, false);
 }
 
 async function createGiveaway(context, prize, durationText, winnersCount, targetChannel) {
