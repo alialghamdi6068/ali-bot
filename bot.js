@@ -404,6 +404,12 @@ const permissions = (() => {
     if (!actor || !target || !bot || !role) throw new UserInputError("Could not verify role hierarchy.");
     if (role.id === everyoneRoleId) throw new UserInputError("The @everyone role cannot be managed with this command.");
     if (role.managed) throw new UserInputError("Managed integration roles cannot be assigned manually.");
+    if (target.id === bot.id) throw new UserInputError("The bot's own roles cannot be changed with this command.");
+    if (role.permissions.has(PermissionFlagsBits.Administrator) &&
+        guild?.ownerId !== actor.id &&
+        !actor.permissions.has(PermissionFlagsBits.Administrator)) {
+      throw new UserInputError("Only the server owner or an administrator can assign an Administrator role.");
+    }
     if (role.position >= bot.roles.highest.position) {
       throw new UserInputError("I cannot manage a role equal to or higher than my highest role.");
     }
