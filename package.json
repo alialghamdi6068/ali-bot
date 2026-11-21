@@ -9,10 +9,10 @@
     "check": "node --check bot.js"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24.17.0"
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1",
+    "better-sqlite3": "^12.11.1",
     "discord.js": "^14.27.0"
   }
 }
