@@ -1627,6 +1627,7 @@ function isPrivateGuildChannel(channel) {
   if (channel.isThread?.() && channel.type === ChannelType.PrivateThread) return true;
   if (!channel.guild || typeof channel.permissionsFor !== "function") return true;
   try {
+    if (channel.id && statements.getTicketByChannel.get(channel.id)) return true;
     const permissions = channel.permissionsFor(channel.guild.roles.everyone);
     return !permissions || !permissions.has(PermissionFlagsBits.ViewChannel);
   } catch {
