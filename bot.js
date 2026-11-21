@@ -1497,13 +1497,13 @@ async function execute(context, name, data = {}) {
         logAction(guild.id, user.id, "security_config", null, "Anti-spam " + (data.enabled ? "enabled" : "disabled"));
         await reply(context, "Anti-spam is now " + (data.enabled ? "enabled." : "disabled."));
       } else if (sub === "addword") {
-        const word = String(data.word || "").trim().toLocaleLowerCase();
-        if (word.length < 2 || !/[\p{L}\p{N}]/u.test(word)) throw new UserInputError("Enter a valid word or phrase (2–80 characters).");
+        const word = normalizeSecurityText(data.word);
+        if (word.length < 2 || word.length > 80 || !/[\p{L}\p{N}]/u.test(word)) throw new UserInputError("Enter a valid word or phrase (2–80 characters).");
         const result = statements.addBlockedWord.run(guild.id, word, user.id, Date.now());
         await reply(context, result.changes ? "Added the blocked word/phrase." : "That word/phrase is already blocked.");
         logAction(guild.id, user.id, "security_word_add", null, "Added blocked phrase: " + word);
       } else if (sub === "removeword") {
-        const word = String(data.word || "").trim().toLocaleLowerCase();
+        const word = normalizeSecurityText(data.word);
         const result = statements.removeBlockedWord.run(guild.id, word);
         if (!result.changes) throw new UserInputError("That word/phrase is not in the blocked list.");
         await reply(context, "Removed the blocked word/phrase.");
@@ -1622,6 +1622,41 @@ client.once("ready", async () => {
   }
 });
 
+function normalizeSecurityText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function escapeRegex(value) {
+  return [...value].map(character =>
+    "\\.^$|?*+()[]{}".includes(character) ? "\\" + character : character
+  ).join("");
+}
+
+const blockedWordPatternCache = new Map();
+
+function matchesBlockedWord(content, word) {
+  const normalizedWord = normalizeSecurityText(word);
+  if (!normalizedWord) return false;
+  let pattern = blockedWordPatternCache.get(normalizedWord);
+  if (!pattern) {
+    const pieces = normalizedWord.split(" ").map(piece =>
+      [...piece].map(escapeRegex).join("[\\p{P}\\p{S}\\s\\p{Cf}]*")
+    );
+    pattern = new RegExp(
+      "(^|[^\\p{L}\\p{N}_])" + pieces.join("[\\p{P}\\p{S}\\p{Cf}]+") + "($|[^\\p{L}\\p{N}_])",
+      "u"
+    );
+    if (blockedWordPatternCache.size >= 1000) blockedWordPatternCache.clear();
+    blockedWordPatternCache.set(normalizedWord, pattern);
+  }
+  return pattern.test(normalizeSecurityText(content));
+}
+
 function isPrivateGuildChannel(channel) {
   if (!channel) return true;
   if (channel.isThread?.() && channel.type === ChannelType.PrivateThread) return true;
@@ -1655,13 +1690,10 @@ async function handleSecurity(message, { countForSpam = true } = {}) {
       member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (statements.getGuildSetting.get(message.guild.id, "security_enabled")?.value === "false") return true;
 
-  const content = String(message.content || "").toLocaleLowerCase().trim();
+  const content = normalizeSecurityText(message.content);
   if (content) {
     const blockedWords = statements.getBlockedWords.all(message.guild.id).map(row => row.word);
-    const tokens = content.split(/[^\p{L}\p{N}_]+/u);
-    const matched = blockedWords.find(word =>
-      word.includes(" ") ? content.includes(word) : tokens.includes(word)
-    );
+    const matched = blockedWords.find(word => matchesBlockedWord(content, word));
     if (matched) {
       let deleted = true;
       try {
