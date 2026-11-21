@@ -1803,7 +1803,9 @@ client.on("interactionCreate", async interaction => {
   try {
     if (await handleTicketInteraction(interaction)) return;
     if (interaction.isButton() && interaction.customId.startsWith("giveaway:enter:")) {
-      if (!interaction.guild) return;
+      if (!interaction.guild) {
+        return interaction.reply({ content: "This giveaway can only be entered from its server.", flags: MessageFlags.Ephemeral });
+      }
       const id = Number(interaction.customId.split(":")[2]);
       const giveaway = statements.getGiveaway.get(id, interaction.guild.id);
       if (!giveaway || giveaway.status !== "active" || giveaway.ends_at <= Date.now()) {
@@ -1822,7 +1824,9 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+    if (!interaction.guild) {
+      return interaction.reply({ content: "This command can only be used inside a server.", flags: MessageFlags.Ephemeral });
+    }
 
     const name = interaction.commandName;
     const data = {};
