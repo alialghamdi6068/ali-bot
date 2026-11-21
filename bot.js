@@ -1649,7 +1649,7 @@ function matchesBlockedWord(content, word) {
       [...piece].map(escapeRegex).join("[\\p{P}\\p{S}\\s\\p{Cf}]*")
     );
     pattern = new RegExp(
-      "(^|[^\\p{L}\\p{N}_])" + pieces.join("[\\p{P}\\p{S}\\p{Cf}]+") + "($|[^\\p{L}\\p{N}_])",
+      "(^|[^\\p{L}\\p{N}_])" + pieces.join("[\\p{P}\\p{S}\\s\\p{Cf}]+") + "($|[^\\p{L}\\p{N}_])",
       "u"
     );
     if (blockedWordPatternCache.size >= 1000) blockedWordPatternCache.clear();
