@@ -969,10 +969,32 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
 }
 
 async function finishGiveawayInternal(giveaway, reroll = false) {
-  const channel = await client.channels.fetch(giveaway.channel_id);
-  if (!channel?.isTextBased()) throw new Error(`Giveaway #${giveaway.id} channel is unavailable; it will be retried.`);
-  if (!giveaway.message_id) throw new Error(`Giveaway #${giveaway.id} has no linked message; refusing to mark it ended.`);
-  const message = await channel.messages.fetch(giveaway.message_id);
+  let channel;
+  try {
+    channel = await client.channels.fetch(giveaway.channel_id);
+  } catch (error) {
+    if (Number(error?.code) !== 10003) throw error;
+  }
+
+  if (!channel?.isTextBased() || !giveaway.message_id) {
+    if (!reroll) {
+      statements.endGiveaway.run(giveaway.id);
+      return [];
+    }
+    throw new UserInputError("The giveaway post is no longer available, so it can't be rerolled.");
+  }
+
+  let message;
+  try {
+    message = await channel.messages.fetch(giveaway.message_id);
+  } catch (error) {
+    if (Number(error?.code) !== 10008) throw error;
+    if (!reroll) {
+      statements.endGiveaway.run(giveaway.id);
+      return [];
+    }
+    throw new UserInputError("The giveaway post was deleted, so it can't be rerolled.");
+  }
 
   const shuffled = statements.getGiveawayEntries.all(giveaway.id).map(row => row.user_id);
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
