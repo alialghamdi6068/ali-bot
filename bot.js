@@ -1466,32 +1466,35 @@ const SPAM_WINDOW_MS = 5000;
 const SPAM_LIMIT = 5;
 
 async function handleSecurity(message) {
-  if (!message.guild || message.author?.bot || message.webhookId || !message.member) return true;
-  if (message.member.permissions.has(PermissionFlagsBits.ManageGuild) ||
-      message.member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (!message.guild || message.author?.bot || message.webhookId) return true;
+
+  const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
+  if (!member) return true;
+  if (member.permissions.has(PermissionFlagsBits.ManageGuild) ||
+      member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (statements.getGuildSetting.get(message.guild.id, "security_enabled")?.value === "false") return true;
 
   const content = String(message.content || "").toLocaleLowerCase().trim();
-  if (!content) return true;
+  if (content) {
+    const blockedWords = statements.getBlockedWords.all(message.guild.id).map(row => row.word);
+    const tokens = content.split(/[^\p{L}\p{N}_]+/u);
+    const matched = blockedWords.find(word =>
+      word.includes(" ") ? content.includes(word) : tokens.includes(word)
+    );
+    if (matched) {
+      let deleted = true;
+      try {
+        await message.delete();
+      } catch (error) {
+        deleted = false;
+        console.error("Could not delete a message blocked by security:", error);
+      }
 
-  const blockedWords = statements.getBlockedWords.all(message.guild.id).map(row => row.word);
-  const tokens = content.split(/[^\p{L}\p{N}_]+/u);
-  const matched = blockedWords.find(word =>
-    word.includes(" ") ? content.includes(word) : tokens.includes(word)
-  );
-  if (matched) {
-    let deleted = true;
-    try {
-      await message.delete();
-    } catch (error) {
-      deleted = false;
-      console.error("Could not delete a message blocked by security:", error);
+      logAction(message.guild.id, client.user.id, "security_blocked_message", message.author.id,
+        "Blocked configured phrase in #" + message.channel.name + ": " + matched +
+        (deleted ? "" : " (message could not be deleted; check the bot's Manage Messages permission)"));
+      return false;
     }
-
-    logAction(message.guild.id, client.user.id, "security_blocked_message", message.author.id,
-      "Blocked configured phrase in #" + message.channel.name + ": " + matched +
-      (deleted ? "" : " (message could not be deleted; check the bot's Manage Messages permission)"));
-    return false;
   }
 
   if (statements.getGuildSetting.get(message.guild.id, "antispam_enabled")?.value === "false") return true;
