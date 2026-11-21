@@ -425,6 +425,8 @@ const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
 
 const DEFAULT_REASON = "No reason provided.";
 
+class UserInputError extends Error {}
+
 if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
   throw new UserInputError("Paste your Discord bot token into TOKEN in the BOT CONFIGURATION section.");
 }
@@ -567,8 +569,6 @@ function requirePermission(member, permission, label) {
     throw new UserInputError(`You need ${label} permission to do that.`);
   }
 }
-
-class UserInputError extends Error {}
 
 function commandErrorMessage(error) {
   const code = Number(error?.code);
@@ -758,8 +758,8 @@ async function handleTicketInteraction(interaction) {
   const validAction = parts[1] === "action" && ["close", "claim", "reopen", "delete"].includes(parts[2]);
   const validClose = parts[1] === "close" &&
     ["confirm", "cancel"].includes(parts[2]) &&
-    /^\\d{17,20}$/.test(parts[3] || "") &&
-    /^\\d{17,20}$/.test(parts[4] || "");
+    /^\d{17,20}$/.test(parts[3] || "") &&
+    /^\d{17,20}$/.test(parts[4] || "");
 
   if (!validCreate && !validAction && !validClose) {
     await interaction.reply({ content: "This ticket button is no longer available.", flags: MessageFlags.Ephemeral });
