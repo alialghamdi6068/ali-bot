@@ -471,7 +471,7 @@ const ticketSupport = (() => {
       "\nMessages: " + ordered.length +
       "\n\n" + lines.join("\n\n");
 
-    const transcriptChannelId = setting("transcript_channel_id");
+    const transcriptChannelId = setting(guild.id, "transcript_channel_id");
     let target = null;
     if (transcriptChannelId) {
       target = await guild.channels.fetch(transcriptChannelId).catch(() => null);
