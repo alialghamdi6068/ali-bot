@@ -202,11 +202,11 @@ const slashCommands = (() => {
   new SlashCommandBuilder().setName("clearwarn").setDescription("Delete one warning")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
     .addIntegerOption(o => o.setName("warningid").setDescription("Warning number").setRequired(true)),
-  new SlashCommandBuilder().setName("clear").setDescription("Delete recent messages")
+  new SlashCommandBuilder().setName("clear").setDescription("Delete recent messages (1–100)")
     .addIntegerOption(o => o.setName("amount").setDescription("1 to 100").setMinValue(1).setMaxValue(100).setRequired(true)),
-  new SlashCommandBuilder().setName("purge").setDescription("Purge recent messages")
+  new SlashCommandBuilder().setName("purge").setDescription("Delete a batch of recent messages")
     .addIntegerOption(o => o.setName("amount").setDescription("1 to 100").setMinValue(1).setMaxValue(100).setRequired(true)),
-  new SlashCommandBuilder().setName("ticket").setDescription("Create a support ticket")
+  new SlashCommandBuilder().setName("ticket").setDescription("Open a support ticket")
     .addStringOption(o => o.setName("category").setDescription("Ticket category").addChoices(
       { name: "Support", value: "support" },
       { name: "Complaint", value: "complaint" },
@@ -225,12 +225,12 @@ const slashCommands = (() => {
     .addStringOption(o => o.setName("duration").setDescription("Examples: 10m, 2h, 1d").setRequired(true))
     .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20).setRequired(true))
     .addChannelOption(o => o.setName("channel").setDescription("Where to post").addChannelTypes(ChannelType.GuildText)),
-  new SlashCommandBuilder().setName("giveawaylist").setDescription("List active giveaways"),
+  new SlashCommandBuilder().setName("giveawaylist").setDescription("View active giveaways"),
   new SlashCommandBuilder().setName("endgiveaway").setDescription("End a giveaway")
     .addIntegerOption(o => o.setName("giveawayid").setDescription("Giveaway number").setRequired(true)),
   new SlashCommandBuilder().setName("reroll").setDescription("Reroll giveaway winners")
     .addIntegerOption(o => o.setName("giveawayid").setDescription("Giveaway number").setRequired(true)),
-  new SlashCommandBuilder().setName("say").setDescription("Make the bot send a message")
+  new SlashCommandBuilder().setName("say").setDescription("Send a message as the bot")
     .addStringOption(o => o.setName("message").setDescription("Message to send").setMaxLength(2000).setRequired(true)),
   new SlashCommandBuilder().setName("dm").setDescription("Send a direct message")
     .addUserOption(o => o.setName("user").setDescription("Recipient").setRequired(true))
@@ -241,12 +241,12 @@ const slashCommands = (() => {
   new SlashCommandBuilder().setName("removerole").setDescription("Remove a role from a member")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
     .addRoleOption(o => o.setName("role").setDescription("Role to remove").setRequired(true)),
-  new SlashCommandBuilder().setName("help").setDescription("Show all bot commands"),
-  new SlashCommandBuilder().setName("commands").setDescription("List all bot commands"),
-  new SlashCommandBuilder().setName("userinfo").setDescription("Show member information")
+  new SlashCommandBuilder().setName("help").setDescription("Show available commands"),
+  new SlashCommandBuilder().setName("commands").setDescription("Browse available commands"),
+  new SlashCommandBuilder().setName("userinfo").setDescription("View a member's details")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(false)),
-  new SlashCommandBuilder().setName("serverinfo").setDescription("Show server information"),
-  new SlashCommandBuilder().setName("ping").setDescription("Show bot latency"),
+  new SlashCommandBuilder().setName("serverinfo").setDescription("View server details"),
+  new SlashCommandBuilder().setName("ping").setDescription("Check the bot's response time"),
   new SlashCommandBuilder().setName("lock").setDescription("Lock this text channel"),
   new SlashCommandBuilder().setName("unlock").setDescription("Unlock this text channel"),
   new SlashCommandBuilder().setName("slowmode").setDescription("Set channel slowmode")
@@ -256,15 +256,15 @@ const slashCommands = (() => {
   new SlashCommandBuilder().setName("notify").setDescription("Send a notification, optionally pinging a role")
     .addStringOption(o => o.setName("message").setDescription("Notification text").setMaxLength(2000).setRequired(true))
     .addRoleOption(o => o.setName("role").setDescription("Role to notify")),
-  new SlashCommandBuilder().setName("ticketconfig").setDescription("Configure ticket transcripts and category channels")
+  new SlashCommandBuilder().setName("ticketconfig").setDescription("Set up ticket channels and categories")
     .addChannelOption(o => o.setName("transcriptchannel").setDescription("Transcript channel").addChannelTypes(ChannelType.GuildText))
     .addChannelOption(o => o.setName("supportcategory").setDescription("Support category").addChannelTypes(ChannelType.GuildCategory))
     .addChannelOption(o => o.setName("complaintcategory").setDescription("Complaint category").addChannelTypes(ChannelType.GuildCategory))
     .addChannelOption(o => o.setName("partnershipcategory").setDescription("Partnership category").addChannelTypes(ChannelType.GuildCategory))
     .addChannelOption(o => o.setName("panelchannel").setDescription("Publish the ticket button panel here").addChannelTypes(ChannelType.GuildText)),
-  new SlashCommandBuilder().setName("logs").setDescription("View logs or set the log channel")
+  new SlashCommandBuilder().setName("logs").setDescription("View recent logs or set the log channel")
     .addChannelOption(o => o.setName("channel").setDescription("Channel for automatic logs").addChannelTypes(ChannelType.GuildText)),
-  new SlashCommandBuilder().setName("security").setDescription("Configure automatic message protection")
+  new SlashCommandBuilder().setName("security").setDescription("Manage message protection")
     .addSubcommand(s => s.setName("enable").setDescription("Enable automatic message protection"))
     .addSubcommand(s => s.setName("disable").setDescription("Disable automatic message protection"))
     .addSubcommand(s => s.setName("addword").setDescription("Block a word or phrase")
@@ -274,7 +274,7 @@ const slashCommands = (() => {
     .addSubcommand(s => s.setName("list").setDescription("List blocked words"))
     .addSubcommand(s => s.setName("antispam").setDescription("Toggle anti-spam protection")
       .addBooleanOption(o => o.setName("enabled").setDescription("Enable or disable anti-spam").setRequired(true))),
-  new SlashCommandBuilder().setName("logsettings").setDescription("Enable or disable a log category")
+  new SlashCommandBuilder().setName("logsettings").setDescription("Choose which events are logged")
     .addStringOption(o => o.setName("category").setDescription("Log category").setRequired(true).addChoices(
       {name:"Messages",value:"messages"},{name:"Members",value:"members"},{name:"Channels",value:"channels"},
       {name:"Roles",value:"roles"},{name:"Moderation",value:"moderation"},{name:"Tickets",value:"tickets"},
@@ -585,7 +585,7 @@ function commandErrorMessage(error) {
     return error.message;
   }
 
-  return "Something went wrong while running that command. Try again in a moment.";
+  return "That didn’t work. Give it another try in a moment.";
 }
 
 function getMember(guild, user) {
@@ -1492,10 +1492,11 @@ async function handleSecurity(message) {
 }
 
 client.on("messageCreate", async message => {
-  let shouldContinue = true;
-  try { shouldContinue = await handleSecurity(message); }
-  catch (error) { console.error("Security handler error:", error); }
-
+  try {
+    await handleSecurity(message);
+  } catch (error) {
+    console.error("Security handler error:", error);
+  }
 });
 
 async function findAuditExecutor(guild, eventType, targetId) {
