@@ -9,7 +9,7 @@
     "check": "node --check bot.js"
   },
   "engines": {
-    "node": "^24.17.0 || ^26.0.0"
+    "node": "^24.22.3 || ^26.13.1"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
