@@ -1307,7 +1307,7 @@ async function execute(context, name, data = {}) {
       if (typeof data.message !== "string" || !data.message.trim() || data.message.length > 2000) throw new UserInputError("Announcement must contain between 1 and 2000 characters.");
       const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Announcement").setDescription(data.message.trim()).setFooter({ text: "Posted by " + user.tag }).setTimestamp();
       await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-      logAction(guild.id, user.id, "announce", channel.id, data.message.slice(0, 500));
+      logAction(guild.id, user.id, "announce", channel.id, messageAuditDetails(channel, data.message, "Announcement"));
       await reply(context, "Announcement sent.");
       break;
     }
@@ -1320,7 +1320,7 @@ async function execute(context, name, data = {}) {
       }
       const prefix = role ? "<@&" + role.id + "> " : "";
       await channel.send({ content: prefix + data.message.trim(), allowedMentions: { roles: role ? [role.id] : [], parse: [] } });
-      logAction(guild.id, user.id, "notify", channel.id, data.message.slice(0, 500));
+      logAction(guild.id, user.id, "notify", channel.id, messageAuditDetails(channel, data.message, "Notification"));
       await reply(context, "Notification sent.");
       break;
     }
@@ -1414,7 +1414,7 @@ async function execute(context, name, data = {}) {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
       if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new UserInputError("Message must contain between 1 and 2000 characters.");
       await channel.send({ content: data.message, allowedMentions: { parse: [] } });
-      logAction(guild.id, user.id, "say", null, data.message.slice(0, 500));
+      logAction(guild.id, user.id, "say", channel.id, messageAuditDetails(channel, data.message, "Message"));
       if (context.isInteraction) await reply(context, "Message sent.");
       break;
     }
@@ -1632,6 +1632,13 @@ function isPrivateGuildChannel(channel) {
   } catch {
     return true;
   }
+}
+
+function messageAuditDetails(channel, content, label) {
+  if (isPrivateGuildChannel(channel)) {
+    return label + " sent in private channel #" + (channel?.name || "unknown") + "; content omitted.";
+  }
+  return String(content || "").slice(0, 500);
 }
 
 const recentUserMessages = new Map();
