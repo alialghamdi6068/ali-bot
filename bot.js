@@ -164,7 +164,6 @@ const database = (() => {
       )
       ON CONFLICT(giveaway_id, user_id) DO NOTHING
     `),
-    getGiveawayEntry: db.prepare("SELECT 1 FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?"),
     getGiveawayEntries: db.prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?"),
     beginGiveawayEnd: db.prepare("UPDATE giveaways SET status = 'ending' WHERE id = ? AND status = 'active'"),
     restoreGiveawayEnd: db.prepare("UPDATE giveaways SET status = 'active' WHERE id = ? AND status = 'ending'"),
@@ -644,9 +643,10 @@ function getMember(guild, user) {
 async function reply(context, content, ephemeral = true) {
   if (context.isInteraction) {
     const payload = typeof content === "string" ? { content } : content;
-    const response = { ...payload, allowedMentions: payload.allowedMentions ?? { parse: [] }, flags: ephemeral ? MessageFlags.Ephemeral : undefined };
+    const safePayload = { ...payload, allowedMentions: payload.allowedMentions ?? { parse: [] } };
+    const response = { ...safePayload, flags: ephemeral ? MessageFlags.Ephemeral : undefined };
 
-    if (context.deferred) return context.editReply(payload);
+    if (context.deferred) return context.editReply(safePayload);
     if (context.replied) return context.followUp(response);
     return context.reply(response);
   }
