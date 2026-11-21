@@ -1809,7 +1809,7 @@ async function handleSecurity(message, { countForSpam = true } = {}) {
           : "";
     logAction(message.guild.id, client.user.id, "security_spam_detected", message.author.id,
       "Rapid message burst detected in #" + message.channel.name + " (" + timestamps.length + " messages / 5 seconds). Strike #" + strikes +
-      (timeoutDuration ? (timeoutApplied ? "; timeout applied for " + timeoutLabel : "; timeout not applied because the bot cannot moderate this member") : "; message deleted") +
+      (timeoutDuration ? (timeoutApplied ? "; timeout applied for " + timeoutLabel : "; timeout not applied; check bot permissions and role hierarchy") : "; message deleted") +
       (deleted ? "" : "; message could not be deleted, check Manage Messages permission"));
     return false;
   }
