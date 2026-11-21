@@ -624,6 +624,10 @@ function logAction(guildId, actorId, action, targetId, details) {
   client.channels.fetch(logChannelId)
     .then(channel => {
       if (!channel?.isTextBased()) return null;
+      if (!isPrivateLogChannel(channel)) {
+        console.error("Automatic log delivery skipped because the configured log channel is not private.");
+        return null;
+      }
 
       let target = "None";
       if (targetId) {
@@ -1526,12 +1530,24 @@ async function execute(context, name, data = {}) {
     case "logs": {
       if (data.channel) {
         requirePermission(member, PermissionFlagsBits.ManageGuild, "Manage Server");
-        if (data.channel.guildId !== guild.id || !data.channel.isTextBased()) {
+        if (data.channel.guildId !== guild.id || data.channel.type !== ChannelType.GuildText) {
           throw new UserInputError("Choose a text channel from this server.");
+        }
+        const everyonePermissions = data.channel.permissionsFor(guild.roles.everyone);
+        const botPermissions = guild.members.me ? data.channel.permissionsFor(guild.members.me) : null;
+        if (!everyonePermissions || everyonePermissions.has(PermissionFlagsBits.ViewChannel) ||
+            statements.getTicketByChannel.get(data.channel.id)) {
+          throw new UserInputError("The log channel must be private and separate from ticket channels.");
+        }
+        if (!botPermissions ||
+            !botPermissions.has(PermissionFlagsBits.ViewChannel) ||
+            !botPermissions.has(PermissionFlagsBits.SendMessages) ||
+            !botPermissions.has(PermissionFlagsBits.EmbedLinks)) {
+          throw new UserInputError("The bot needs View Channel, Send Messages, and Embed Links in the log channel.");
         }
         statements.setGuildSetting.run(guild.id, "log_channel_id", data.channel.id);
         logAction(guild.id, user.id, "log_channel_config", data.channel.id, "Automatic logs channel configured");
-        await reply(context, "Automatic logs will now be sent to <#" + data.channel.id + ">.", false);
+        await reply(context, "Automatic logs will now be sent to the private channel <#" + data.channel.id + ">.", false);
         break;
       }
 
@@ -1656,6 +1672,17 @@ function matchesBlockedWord(content, word) {
     blockedWordPatternCache.set(normalizedWord, pattern);
   }
   return pattern.test(normalizeSecurityText(content));
+}
+
+function isPrivateLogChannel(channel) {
+  if (!channel || channel.type !== ChannelType.GuildText || !channel.guild || typeof channel.permissionsFor !== "function") return false;
+  try {
+    if (statements.getTicketByChannel.get(channel.id)) return false;
+    const permissions = channel.permissionsFor(channel.guild.roles.everyone);
+    return Boolean(permissions && !permissions.has(PermissionFlagsBits.ViewChannel));
+  } catch {
+    return false;
+  }
 }
 
 function isPrivateGuildChannel(channel) {
