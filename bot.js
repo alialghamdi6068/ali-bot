@@ -138,12 +138,7 @@ const database = (() => {
     }
     db.exec(`
       UPDATE tickets
-      SET guild_number = (
-        SELECT COUNT(*)
-        FROM tickets AS previous
-        WHERE previous.guild_id = tickets.guild_id
-          AND previous.id <= tickets.id
-      )
+      SET guild_number = number
       WHERE guild_number IS NULL;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_guild_number
         ON tickets(guild_id, guild_number);
