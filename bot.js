@@ -17,6 +17,10 @@ const {
 } = require("discord.js");
 const { randomInt } = require("node:crypto");
 
+const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
+const DEFAULT_REASON = "No reason provided.";
+
+
 const database = (() => {
   const fs = require("node:fs");
   const path = require("node:path");
@@ -469,10 +473,6 @@ const ticketSupport = (() => {
 
   return { setting, setSetting, createTranscript };
 })();
-
-const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
-
-const DEFAULT_REASON = "No reason provided.";
 
 class UserInputError extends Error {}
 
@@ -1208,8 +1208,6 @@ async function moderation(context, name, data) {
   }
   if (name === "clearwarn") {
     requirePermission(member, PermissionFlagsBits.ModerateMembers, "Moderate Members");
-    const targetMember = await getMember(guild, data.target);
-    assertCanModerateMember({ actor: member, target: targetMember, bot: guild.members.me, guild });
     const result = statements.deleteWarning.run(data.warningId, guild.id, data.target.id);
     if (!result.changes) throw new UserInputError("Warning not found for this member.");
     logAction(guild.id, user.id, "clear_warning", data.target.id, `Warning #${data.warningId}`);
