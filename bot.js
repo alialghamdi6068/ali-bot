@@ -1622,6 +1622,18 @@ client.once("ready", async () => {
   }
 });
 
+function isPrivateGuildChannel(channel) {
+  if (!channel) return true;
+  if (channel.isThread?.() && channel.type === ChannelType.PrivateThread) return true;
+  if (!channel.guild || typeof channel.permissionsFor !== "function") return true;
+  try {
+    const permissions = channel.permissionsFor(channel.guild.roles.everyone);
+    return !permissions || !permissions.has(PermissionFlagsBits.ViewChannel);
+  } catch {
+    return true;
+  }
+}
+
 const recentUserMessages = new Map();
 const SPAM_WINDOW_MS = 5000;
 const SPAM_LIMIT = 5;
@@ -1651,9 +1663,11 @@ async function handleSecurity(message, { countForSpam = true } = {}) {
         console.error("Could not delete a message blocked by security:", error);
       }
 
+      const details = isPrivateGuildChannel(message.channel)
+        ? "Blocked configured phrase in private channel #" + message.channel.name
+        : "Blocked configured phrase in #" + message.channel.name + ": " + matched;
       logAction(message.guild.id, client.user.id, "security_blocked_message", message.author.id,
-        "Blocked configured phrase in #" + message.channel.name + ": " + matched +
-        (deleted ? "" : " (message could not be deleted; check the bot's Manage Messages permission)"));
+        details + (deleted ? "" : " (message could not be deleted; check the bot's Manage Messages permission)"));
       return false;
     }
   }
@@ -1714,7 +1728,9 @@ async function findAuditExecutor(guild, eventType, targetId) {
 client.on("messageDelete", async message => {
   if (message.partial) message = await message.fetch().catch(() => message);
   if (!message.guild || message.author?.bot) return;
-  const content = (message.content || "[No cached message content]").slice(0, 1500);
+  const content = isPrivateGuildChannel(message.channel)
+    ? "[Content omitted from private channel]"
+    : (message.content || "[No cached message content]").slice(0, 1500);
   const actorId = await findAuditExecutor(message.guild, AuditLogEvent.MessageDelete, message.author?.id);
   logAction(message.guild.id, actorId || "system", "message_delete",
     message.author?.id, "Channel #" + message.channel?.name + ": " + content);
@@ -1730,10 +1746,13 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
   } catch (error) {
     console.error("Security check failed for an edited message:", error);
   }
+  const details = isPrivateGuildChannel(newMessage.channel)
+    ? "Message edited in private channel #" + newMessage.channel?.name
+    : "Channel #" + newMessage.channel?.name +
+      "\nBefore: " + (oldMessage.content || "[Empty]").slice(0, 700) +
+      "\nAfter: " + (newMessage.content || "[Empty]").slice(0, 700);
   logAction(newMessage.guild.id, newMessage.author?.id || client.user.id, "message_edit",
-    newMessage.author?.id, "Channel #" + newMessage.channel?.name +
-    "\nBefore: " + (oldMessage.content || "[Empty]").slice(0, 700) +
-    "\nAfter: " + (newMessage.content || "[Empty]").slice(0, 700));
+    newMessage.author?.id, details);
 });
 
 client.on("guildMemberAdd", member => {
