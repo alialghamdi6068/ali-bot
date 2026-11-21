@@ -155,9 +155,21 @@ const database = (() => {
     getGiveaway: db.prepare("SELECT * FROM giveaways WHERE id = ? AND guild_id = ?"),
     getActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE status = 'active'"),
     getGuildActiveGiveaways: db.prepare("SELECT * FROM giveaways WHERE guild_id = ? AND status = 'active' ORDER BY id DESC LIMIT 15"),
-    enterGiveaway: db.prepare("INSERT OR IGNORE INTO giveaway_entries(giveaway_id, user_id, entered_at) VALUES(?, ?, ?)"),
+    enterGiveaway: db.prepare(`
+      INSERT INTO giveaway_entries(giveaway_id, user_id, entered_at)
+      SELECT ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM giveaways
+        WHERE id = ? AND guild_id = ? AND status = 'active' AND ends_at > ?
+      )
+      ON CONFLICT(giveaway_id, user_id) DO NOTHING
+    `),
+    getGiveawayEntry: db.prepare("SELECT 1 FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?"),
     getGiveawayEntries: db.prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?"),
-    endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status = 'active'"),
+    beginGiveawayEnd: db.prepare("UPDATE giveaways SET status = 'ending' WHERE id = ? AND status = 'active'"),
+    restoreGiveawayEnd: db.prepare("UPDATE giveaways SET status = 'active' WHERE id = ? AND status = 'ending'"),
+    recoverGiveawayEnds: db.prepare("UPDATE giveaways SET status = 'active' WHERE status = 'ending'"),
+    endGiveaway: db.prepare("UPDATE giveaways SET status = 'ended' WHERE id = ? AND status IN ('active', 'ending')"),
     getLegacySettings: db.prepare("SELECT key, value FROM settings"),
     getGuildSetting: db.prepare("SELECT value FROM guild_settings WHERE guild_id = ? AND key = ?"),
     setGuildSetting: db.prepare("INSERT INTO guild_settings(guild_id, key, value) VALUES(?, ?, ?) ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value"),
@@ -175,6 +187,40 @@ const database = (() => {
   return { db, statements };
 })();
 const { statements } = database;
+const backupFs = require("node:fs/promises");
+const backupPath = require("node:path");
+const BACKUP_INTERVAL_MS = 30 * 60 * 1000;
+const BACKUP_RETENTION = 10;
+const backupDirectory = backupPath.join(__dirname, "data", "backups");
+let backupInProgress = null;
+let backupTimer = null;
+
+async function createDatabaseBackup() {
+  if (backupInProgress) return backupInProgress;
+  const operation = (async () => {
+    await backupFs.mkdir(backupDirectory, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const destination = backupPath.join(backupDirectory, "ali-bot-" + timestamp + ".sqlite");
+    await database.db.backup(destination);
+    const backups = (await backupFs.readdir(backupDirectory))
+      .filter(name => name.startsWith("ali-bot-") && name.endsWith(".sqlite"))
+      .sort()
+      .reverse();
+    for (const oldBackup of backups.slice(BACKUP_RETENTION)) {
+      await backupFs.unlink(backupPath.join(backupDirectory, oldBackup)).catch(error => {
+        console.error("Could not remove an old database backup:", error);
+      });
+    }
+    console.log("Database backup created:", destination);
+    return destination;
+  })();
+  backupInProgress = operation;
+  try {
+    return await operation;
+  } finally {
+    if (backupInProgress === operation) backupInProgress = null;
+  }
+}
 
 const slashCommands = (() => {
   const { SlashCommandBuilder, ChannelType } = require("discord.js");
@@ -407,11 +453,15 @@ const ticketSupport = (() => {
         }));
       }
 
-      await target.send({
-        content: "Transcript for ticket #" + ticket.number + " (" + ordered.length + " messages).",
-        files,
-        allowedMentions: { parse: [] }
-      });
+      for (let index = 0; index < files.length; index += 10) {
+        await target.send({
+          content: index === 0
+            ? "Transcript for ticket #" + ticket.number + " (" + ordered.length + " messages)."
+            : "Transcript continued for ticket #" + ticket.number + ".",
+          files: files.slice(index, index + 10),
+          allowedMentions: { parse: [] }
+        });
+      }
     }
 
     logAction(guild.id, guild.client.user.id, "ticket_transcript", ticket.user_id,
@@ -426,10 +476,6 @@ const TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
 const DEFAULT_REASON = "No reason provided.";
 
 class UserInputError extends Error {}
-
-if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
-  throw new UserInputError("Paste your Discord bot token into TOKEN in the BOT CONFIGURATION section.");
-}
 
 const client = new Client({
   intents: [
@@ -598,7 +644,7 @@ function getMember(guild, user) {
 async function reply(context, content, ephemeral = true) {
   if (context.isInteraction) {
     const payload = typeof content === "string" ? { content } : content;
-    const response = { ...payload, flags: ephemeral ? MessageFlags.Ephemeral : undefined };
+    const response = { ...payload, allowedMentions: payload.allowedMentions ?? { parse: [] }, flags: ephemeral ? MessageFlags.Ephemeral : undefined };
 
     if (context.deferred) return context.editReply(payload);
     if (context.replied) return context.followUp(response);
@@ -903,6 +949,8 @@ async function addTicketMember(context, target, remove = false) {
   const ticket = getTicket(context.channel.id);
   if (!ticket) throw new UserInputError("This command can only be used inside a ticket.");
   requirePermission(context.member, PermissionFlagsBits.ManageChannels, "Manage Channels");
+  if (remove && target.id === ticket.user_id) throw new UserInputError("The ticket owner cannot be removed from their own ticket.");
+  if (remove && target.id === client.user.id) throw new UserInputError("The bot cannot be removed from a ticket.");
   await context.channel.permissionOverwrites.edit(target.id, remove
     ? { ViewChannel: false }
     : { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true });
@@ -969,6 +1017,16 @@ async function createGiveaway(context, prize, durationText, winnersCount, target
 }
 
 async function finishGiveawayInternal(giveaway, reroll = false) {
+  if (!reroll) {
+    const started = statements.beginGiveawayEnd.run(giveaway.id);
+    if (!started.changes) {
+      const current = statements.getGiveaway.get(giveaway.id, giveaway.guild_id);
+      if (current?.status === "ended") return [];
+      throw new Error("Giveaway #" + giveaway.id + " is already being finalized or is unavailable.");
+    }
+  }
+
+  try {
   let channel;
   try {
     channel = await client.channels.fetch(giveaway.channel_id);
@@ -1026,6 +1084,10 @@ async function finishGiveawayInternal(giveaway, reroll = false) {
     }
   }
   return winners;
+  } catch (error) {
+    if (!reroll) statements.restoreGiveawayEnd.run(giveaway.id);
+    throw error;
+  }
 }
 
 const giveawayFinishes = new Map();
@@ -1288,7 +1350,7 @@ async function execute(context, name, data = {}) {
     case "say": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
       if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new UserInputError("Message must contain between 1 and 2000 characters.");
-      await channel.send({ content: data.message, allowedMentions: { parse: ["everyone", "users", "roles"] } });
+      await channel.send({ content: data.message, allowedMentions: { parse: [] } });
       logAction(guild.id, user.id, "say", null, data.message.slice(0, 500));
       if (context.isInteraction) await reply(context, "Message sent.");
       break;
@@ -1296,8 +1358,8 @@ async function execute(context, name, data = {}) {
     case "dm": {
       requirePermission(member, PermissionFlagsBits.ManageMessages, "Manage Messages");
       if (typeof data.message !== "string" || data.message.length < 1 || data.message.length > 2000) throw new UserInputError("Message must contain between 1 and 2000 characters.");
-      await data.target.send({ content: data.message, allowedMentions: { parse: ["users", "roles", "everyone"] } });
-      logAction(guild.id, user.id, "dm", data.target.id, data.message.slice(0, 500));
+      await data.target.send({ content: data.message, allowedMentions: { parse: [] } });
+      logAction(guild.id, user.id, "dm", data.target.id, "Direct message sent; message content was not stored.");
       await reply(context, `Direct message sent to <@${data.target.id}>.`);
       break;
     }
@@ -1464,6 +1526,20 @@ client.once("ready", async () => {
   }
 
   try {
+    await createDatabaseBackup();
+  } catch (error) {
+    console.error("Could not create the startup database backup:", error);
+  }
+  if (!backupTimer) {
+    backupTimer = setInterval(() => {
+      createDatabaseBackup().catch(error => console.error("Scheduled database backup failed:", error));
+    }, BACKUP_INTERVAL_MS);
+    backupTimer.unref?.();
+  }
+
+  statements.recoverGiveawayEnds.run();
+
+  try {
     await client.application.commands.set(slashCommands);
     console.log(`Registered ${slashCommands.length} global slash commands.`);
   } catch (error) {
@@ -1487,7 +1563,7 @@ const recentUserMessages = new Map();
 const SPAM_WINDOW_MS = 5000;
 const SPAM_LIMIT = 5;
 
-async function handleSecurity(message) {
+async function handleSecurity(message, { countForSpam = true } = {}) {
   if (!message.guild || message.author?.bot || message.webhookId) return true;
 
   const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
@@ -1519,6 +1595,7 @@ async function handleSecurity(message) {
     }
   }
 
+  if (!countForSpam) return true;
   if (statements.getGuildSetting.get(message.guild.id, "antispam_enabled")?.value === "false") return true;
   const now = Date.now();
   const key = message.guild.id + ":" + message.author.id;
@@ -1586,7 +1663,7 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
   if (!newMessage.guild || newMessage.author?.bot) return;
   if (oldMessage.content === newMessage.content) return;
   try {
-    if (!await handleSecurity(newMessage)) return;
+    if (!await handleSecurity(newMessage, { countForSpam: false })) return;
   } catch (error) {
     console.error("Security check failed for an edited message:", error);
   }
@@ -1703,11 +1780,16 @@ client.on("interactionCreate", async interaction => {
       if (!giveaway || giveaway.status !== "active" || giveaway.ends_at <= Date.now()) {
         return interaction.reply({ content: "This giveaway has ended.", flags: MessageFlags.Ephemeral });
       }
-      const result = statements.enterGiveaway.run(id, interaction.user.id, Date.now());
-      return interaction.reply({
-        content: result.changes ? "You have entered the giveaway." : "You are already entered.",
-        flags: MessageFlags.Ephemeral
-      });
+      const now = Date.now();
+      const result = statements.enterGiveaway.run(id, interaction.user.id, now, id, interaction.guild.id, now);
+      if (result.changes) {
+        return interaction.reply({ content: "You have entered the giveaway.", flags: MessageFlags.Ephemeral });
+      }
+      const current = statements.getGiveaway.get(id, interaction.guild.id);
+      if (!current || current.status !== "active" || current.ends_at <= now) {
+        return interaction.reply({ content: "This giveaway has ended.", flags: MessageFlags.Ephemeral });
+      }
+      return interaction.reply({ content: "You are already entered.", flags: MessageFlags.Ephemeral });
     }
 
     if (!interaction.isChatInputCommand()) return;
@@ -1795,7 +1877,47 @@ client.on("interactionCreate", async interaction => {
 });
 
 client.on("error", error => console.error("Discord client error:", error));
-process.on("unhandledRejection", error => console.error("Unhandled rejection:", error));
+let shuttingDown = false;
+
+async function shutdown(reason, exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.error("Shutting down after:", reason);
+  if (backupTimer) clearInterval(backupTimer);
+  for (const timer of giveawayTimers.values()) clearTimeout(timer);
+  giveawayTimers.clear();
+  client.destroy();
+  if (backupInProgress) await backupInProgress.catch(error => console.error("Database backup did not finish:", error));
+  try {
+    database.db.pragma("wal_checkpoint(TRUNCATE)");
+  } catch (error) {
+    console.error("Could not checkpoint the database during shutdown:", error);
+  }
+  process.exitCode = exitCode;
+}
+
+process.once("SIGINT", () => shutdown("SIGINT").catch(error => {
+  console.error("Shutdown failed:", error);
+  process.exitCode = 1;
+}));
+process.once("SIGTERM", () => shutdown("SIGTERM").catch(error => {
+  console.error("Shutdown failed:", error);
+  process.exitCode = 1;
+}));
+process.on("unhandledRejection", error => {
+  console.error("Unhandled rejection:", error);
+  shutdown("unhandled rejection", 1).catch(shutdownError => {
+    console.error("Shutdown failed:", shutdownError);
+    process.exitCode = 1;
+  });
+});
+process.on("uncaughtException", error => {
+  console.error("Uncaught exception:", error);
+  shutdown("uncaught exception", 1).catch(shutdownError => {
+    console.error("Shutdown failed:", shutdownError);
+    process.exitCode = 1;
+  });
+});
 
 if (require.main === module) {
   if (TOKEN === "PUT_YOUR_BOT_TOKEN_HERE" || !TOKEN.trim()) {
