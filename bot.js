@@ -766,10 +766,22 @@ async function handleTicketInteraction(interaction) {
     return true;
   }
 
-  if (parts[1] === "create" && ["support", "complaint", "partnership"].includes(parts[2])) {
+  if (parts[1] === "create") {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  } else if (parts[1] === "action" && parts[2] === "delete") {
+  } else if (parts[1] === "action") {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  } else if (parts[1] === "close") {
+    if (interaction.user.id !== parts[4] && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+      await interaction.reply({ content: "Only the person who requested closure or ticket staff can use these buttons.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+
+    if (parts[2] === "cancel") {
+      await interaction.update({ content: "Ticket closure cancelled.", components: [] });
+      return true;
+    }
+
+    await interaction.deferUpdate();
   }
 
   const context = {
@@ -813,24 +825,12 @@ async function handleTicketInteraction(interaction) {
   const requesterId = parts[4];
   if (!["confirm", "cancel"].includes(action) || !channelId || !requesterId) return false;
 
-  if (interaction.user.id !== requesterId && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
-    await interaction.reply({ content: "Only the person who requested closure or ticket staff can use these buttons.", ephemeral: true });
-    return true;
-  }
-
-  if (action === "cancel") {
-    await interaction.update({ content: "Ticket closure cancelled.", components: [] });
-    return true;
-  }
-
   const ticket = getTicket(channelId);
   const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
   if (!ticket || ticket.status !== "open" || !channel) {
     await interaction.update({ content: "This ticket is no longer open.", components: [] });
     return true;
   }
-
-  await interaction.deferUpdate();
 
   try {
     await ticketSupport.createTranscript(channel, ticket, interaction.guild, logAction);
