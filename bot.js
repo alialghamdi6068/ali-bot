@@ -828,7 +828,7 @@ async function handleTicketInteraction(interaction) {
   const ticket = getTicket(channelId);
   const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
   if (!ticket || ticket.status !== "open" || !channel) {
-    await interaction.update({ content: "This ticket is no longer open.", components: [] });
+    await interaction.editReply({ content: "This ticket is no longer open.", components: [] });
     return true;
   }
 
